@@ -43,6 +43,12 @@ jobs:
         run: npm run typecheck
         working-directory: ./textlingo-desktop
 
+      - name: Download sidecar binaries
+        run: |
+          chmod +x script/download_binaries.sh
+          bash script/download_binaries.sh
+        shell: bash
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 

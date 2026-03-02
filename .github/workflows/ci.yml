@@ -31,6 +31,13 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
+      - name: Download sidecar binaries
+        run: |
+          chmod +x script/download_binaries.sh
+          bash script/download_binaries.sh
+        shell: bash
+        working-directory: .
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
