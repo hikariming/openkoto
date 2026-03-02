@@ -52,6 +52,14 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Prepare frontend dist for Tauri context
+        run: |
+          mkdir -p ../dist
+          if [ ! -f ../dist/index.html ]; then
+            echo "<!doctype html><html><body>CI placeholder</body></html>" > ../dist/index.html
+          fi
+        working-directory: ./textlingo-desktop/src-tauri
+
       - name: Rust tests
         run: cargo test --all-features --all-targets
         working-directory: ./textlingo-desktop/src-tauri
