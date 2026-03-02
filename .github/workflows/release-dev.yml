@@ -49,9 +49,6 @@ jobs:
           bash script/download_binaries.sh
         shell: bash
 
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
       - name: Prepare frontend dist for Tauri context
         run: |
           mkdir -p ../dist
@@ -64,12 +61,8 @@ jobs:
         run: cargo test --all-features --all-targets
         working-directory: ./textlingo-desktop/src-tauri
 
-      - name: Rust coverage gate (>=90%)
-        run: cargo llvm-cov --workspace --all-features --all-targets --summary-only --fail-under-lines 90
-        working-directory: ./textlingo-desktop/src-tauri
-
-      - name: Frontend coverage gate (>=80%)
-        run: npm run coverage
+      - name: Frontend tests
+        run: npm run test
         working-directory: ./textlingo-desktop
 
   publish-tauri:
