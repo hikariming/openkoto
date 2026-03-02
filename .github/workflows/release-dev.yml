@@ -55,14 +55,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest"
+          - os: "macos-14"
+            rust_targets: "aarch64-apple-darwin"
             args: "--target aarch64-apple-darwin"
-          - platform: "macos-latest"
+          - os: "macos-13"
+            rust_targets: "x86_64-apple-darwin"
             args: "--target x86_64-apple-darwin"
-          - platform: "windows-latest"
+          - os: "windows-latest"
+            rust_targets: ""
             args: ""
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,10 +77,10 @@ jobs:
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.rust_targets }}
 
       - name: install dependencies (macos only)
-        if: matrix.platform == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         run: brew install create-dmg
 
 
@@ -111,7 +114,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Build Plugins (MacOS ARM64)
-        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'aarch64')
+        if: matrix.os == 'macos-14' && contains(matrix.args, 'aarch64')
         run: |
           # Install Python
           brew install python@3.10
@@ -131,11 +134,11 @@ jobs:
           rm -rf dist build venv
           
       - name: Zip Plugins
-        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'aarch64')
+        if: matrix.os == 'macos-14' && contains(matrix.args, 'aarch64')
         run: zip -r plugins.zip plugins/
 
       - name: Upload Plugin to Release
-        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'aarch64')
+        if: matrix.os == 'macos-14' && contains(matrix.args, 'aarch64')
         uses: softprops/action-gh-release@v1
         with:
           files: plugins.zip
