@@ -76,12 +76,15 @@ jobs:
           - os: "macos-14"
             rust_targets: "aarch64-apple-darwin"
             args: "--target aarch64-apple-darwin"
+            bundle_glob: "textlingo-desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/**/*"
           - os: "macos-13"
             rust_targets: "x86_64-apple-darwin"
             args: "--target x86_64-apple-darwin"
+            bundle_glob: "textlingo-desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/**/*"
           - os: "windows-latest"
             rust_targets: ""
             args: ""
+            bundle_glob: "textlingo-desktop/src-tauri/target/release/bundle/**/*"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -112,9 +115,11 @@ jobs:
           bash script/download_binaries.sh
         shell: bash
 
-      - uses: tauri-apps/tauri-action@v0
+      - id: tauri_build
+        uses: tauri-apps/tauri-action@v0
+        continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "🧪 Dev Build ${{ github.ref_name }}"
@@ -130,6 +135,14 @@ jobs:
           prerelease: true   # 关键：标记为预发布，不会触发用户更新弹窗
           projectPath: "./textlingo-desktop"
           args: ${{ matrix.args }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openkoto-dev-${{ matrix.os }}-${{ matrix.rust_targets || 'native' }}
+          path: ${{ matrix.bundle_glob }}
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Build Plugins (MacOS ARM64)
         if: matrix.os == 'macos-14' && contains(matrix.args, 'aarch64')
@@ -156,9 +169,19 @@ jobs:
         run: zip -r plugins.zip plugins/
 
       - name: Upload Plugin to Release
-        if: matrix.os == 'macos-14' && contains(matrix.args, 'aarch64')
+        if: matrix.os == 'macos-14' && contains(matrix.args, 'aarch64') && steps.tauri_build.outcome == 'success'
         uses: softprops/action-gh-release@v1
+        continue-on-error: true
         with:
           files: plugins.zip
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Upload plugin artifact
+        if: matrix.os == 'macos-14' && contains(matrix.args, 'aarch64')
+        uses: actions/upload-artifact@v4
+        with:
+          name: openkoto-dev-plugins-${{ github.ref_name }}
+          path: plugins.zip
+          if-no-files-found: warn
+          retention-days: 7
