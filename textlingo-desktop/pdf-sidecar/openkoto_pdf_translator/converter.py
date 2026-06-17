@@ -13,7 +13,9 @@ from pdfminer.pdffont import PDFCIDFont, PDFUnicodeNotDefined
 from pdfminer.pdfinterp import PDFGraphicState, PDFResourceManager
 from pdfminer.utils import apply_matrix_pt, mult_matrix
 from pymupdf import Font
-from tenacity import retry, wait_fixed
+from tenacity import retry, stop_after_attempt, wait_fixed
+
+from ._trace import trace, now
 
 from .translator import (
     AnythingLLMTranslator,
@@ -345,23 +347,46 @@ class TranslateConverter(PDFConverterEx):
         # B. 段落翻译
         log.debug("\n==========[SSTACK]==========\n")
 
-        @retry(wait=wait_fixed(1))
+        # Bounded retry with visible logging. The previous `@retry(wait=wait_fixed(1))`
+        # had no stop condition, so a persistent error (bad API key, missing model,
+        # dropped connection, no response timeout) retried FOREVER and silently
+        # froze the whole page — the root of the "stuck at 50%" symptom. Cap the
+        # attempts and log every retry so a real failure surfaces in the log
+        # instead of hanging indefinitely.
+        @retry(
+            wait=wait_fixed(2),
+            stop=stop_after_attempt(5),
+            reraise=True,
+            before_sleep=lambda rs: trace(
+                f"paragraph translate retry #{rs.attempt_number}/5 after "
+                f"{type(rs.outcome.exception()).__name__}: {rs.outcome.exception()}"
+            ),
+        )
         def worker(s: str):  # 多线程翻译
             if not s.strip() or re.match(r"^\{v\d+\}$", s):  # 空白和公式不翻译
                 return s
-            try:
-                new = self.translator.translate(s)
-                return new
-            except BaseException as e:
-                if log.isEnabledFor(logging.DEBUG):
-                    log.exception(e)
-                else:
-                    log.exception(e, exc_info=False)
-                raise e
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.thread
-        ) as executor:
-            news = list(executor.map(worker, sstk))
+            return self.translator.translate(s)
+
+        translate_count = sum(
+            1 for s in sstk if s.strip() and not re.match(r"^\{v\d+\}$", s)
+        )
+        trace(
+            f"translating {translate_count}/{len(sstk)} paragraph(s) "
+            f"with {self.thread} worker thread(s)"
+        )
+        _t_tr = now()
+        try:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=self.thread
+            ) as executor:
+                news = list(executor.map(worker, sstk))
+        except BaseException as e:
+            trace(
+                f"paragraph translation FAILED after retries: "
+                f"{type(e).__name__}: {e}"
+            )
+            raise
+        trace(f"translated {translate_count} paragraph(s) in {now() - _t_tr:.2f}s")
 
         ############################################################
         # C. 新文档排版

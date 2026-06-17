@@ -27,8 +27,15 @@ from tenacity import retry, retry_if_exception_type
 from tenacity import stop_after_attempt
 from tenacity import wait_exponential
 
+from ._trace import trace, now
+
 
 logger = logging.getLogger(__name__)
+
+# A hung connection with no timeout blocks a worker thread forever, which then
+# blocks the whole page (executor.map) and freezes progress. Bound every LLM
+# request so a stuck call errors out (and is then retried/surfaced) instead.
+OPENKOTO_LLM_TIMEOUT_SECS = 120.0
 
 
 def remove_control_characters(s):
@@ -448,6 +455,7 @@ class OpenAITranslator(BaseTranslator):
         self.client = openai.OpenAI(
             base_url=base_url or self.envs.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             api_key=api_key or self.envs.get("OPENAI_API_KEY"),
+            timeout=OPENKOTO_LLM_TIMEOUT_SECS,
         )
         self.prompttext = prompt
         self.add_cache_impact_parameters("temperature", self.options["temperature"])
@@ -466,16 +474,31 @@ class OpenAITranslator(BaseTranslator):
         ),
     )
     def do_translate(self, text) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            **self.options,
-            messages=self.prompt(text, self.prompttext),
+        _t = now()
+        trace(
+            f"LLM request -> model={self.model} ({len(text)} chars)"
         )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                **self.options,
+                messages=self.prompt(text, self.prompttext),
+            )
+        except BaseException as e:
+            trace(
+                f"LLM request error after {now() - _t:.2f}s: "
+                f"{type(e).__name__}: {e}"
+            )
+            raise
         if not response.choices:
             if hasattr(response, "error"):
+                trace(f"LLM response had no choices: {getattr(response, 'error', '')}")
                 raise ValueError("Error response from Service", response.error)
         content = response.choices[0].message.content.strip()
         content = self.think_filter_regex.sub("", content).strip()
+        trace(
+            f"LLM response in {now() - _t:.2f}s ({len(content)} chars)"
+        )
         return content
 
     def get_formular_placeholder(self, id: int):

@@ -190,6 +190,28 @@
   },
   "settings": {
     "title": "設定",
+    "sections": {
+      "models": "モデルとプロバイダー",
+      "features": "チャット機能",
+      "general": "一般",
+      "appearance": "外観",
+      "logs": "ログ"
+    },
+    "logs": {
+      "title": "ログ",
+      "description": "アプリ、PDF 翻訳サイドカー（Python）、UI からの詳細ログ。翻訳が止まる問題の診断に使用します。",
+      "allSources": "すべてのソース",
+      "allLevels": "すべてのレベル",
+      "searchPlaceholder": "テキストで絞り込み…",
+      "autoRefresh": "自動更新",
+      "refresh": "更新",
+      "copy": "コピー",
+      "export": "エクスポート",
+      "clear": "クリア",
+      "count": "{{count}} 件",
+      "lastAt": "最終",
+      "empty": "ログはまだありません。PDF 翻訳を実行すると詳細ログがここに表示されます。"
+    },
     "apiProvider": "APIプロバイダー",
     "apiKey": "APIキー",
     "apiKeyPlaceholder": "APIキーを入力...",

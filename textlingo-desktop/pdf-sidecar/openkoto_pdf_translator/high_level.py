@@ -25,6 +25,7 @@ from pymupdf import Document, Font
 from .converter import TranslateConverter
 from .doclayout import OnnxModel
 from .pdfinterp import PDFPageInterpreterEx
+from ._trace import trace, now
 
 from .config import ConfigManager
 from babeldoc.assets.assets import get_font_and_metadata
@@ -115,6 +116,7 @@ def translate_patch(
 
     parser = PDFParser(inf)
     doc = PDFDocument(parser)
+    trace(f"translate_patch: starting, total_pages={total_pages}, thread={thread}")
     with tqdm.tqdm(total=total_pages) as progress:
         for pageno, page in enumerate(PDFPage.create_pages(doc)):
             if cancellation_event and cancellation_event.is_set():
@@ -125,11 +127,17 @@ def translate_patch(
             if callback:
                 callback(progress)
             page.pageno = pageno
+            trace(f"page {pageno + 1}/{total_pages}: layout detection start")
+            _t_layout = now()
             pix = doc_zh[page.pageno].get_pixmap()
             image = np.frombuffer(pix.samples, np.uint8).reshape(
                 pix.height, pix.width, 3
             )[:, :, ::-1]
             page_layout = model.predict(image, imgsz=int(pix.height / 32) * 32)[0]
+            trace(
+                f"page {pageno + 1}/{total_pages}: layout done in {now() - _t_layout:.2f}s "
+                f"({len(page_layout.boxes)} boxes)"
+            )
             # kdtree 是不可能 kdtree 的，不如直接渲染成图片，用空间换时间
             box = np.ones((pix.height, pix.width))
             h, w = box.shape
@@ -160,8 +168,14 @@ def translate_patch(
             doc_zh.update_object(page.page_xref, "<<>>")
             doc_zh.update_stream(page.page_xref, b"")
             doc_zh[page.pageno].set_contents(page.page_xref)
+            trace(f"page {pageno + 1}/{total_pages}: text extraction + translation start")
+            _t_page = now()
             interpreter.process_page(page)
+            trace(
+                f"page {pageno + 1}/{total_pages}: page complete in {now() - _t_page:.2f}s"
+            )
 
+    trace("translate_patch: all pages complete, closing device")
     device.close()
     return obj_patch
 

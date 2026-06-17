@@ -134,6 +134,19 @@ export function PdfReader({
             return;
         }
 
+        const scrollContainer = e.currentTarget;
+        const edgeTolerance = 2;
+        const canScrollVertically = scrollContainer.scrollHeight > scrollContainer.clientHeight + edgeTolerance;
+        const isAtTop = scrollContainer.scrollTop <= edgeTolerance;
+        const isAtBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - edgeTolerance;
+        const isScrollingWithinPage =
+            canScrollVertically &&
+            ((e.deltaY > 0 && !isAtBottom) || (e.deltaY < 0 && !isAtTop));
+
+        if (isScrollingWithinPage) {
+            return;
+        }
+
         const direction = e.deltaY > 0 ? 1 : -1;
         const now = Date.now();
         if (now - lastWheelNavigationAtRef.current < 250 && lastWheelDirectionRef.current === direction) {
@@ -156,6 +169,14 @@ export function PdfReader({
             goToPrevPage();
         }
     }, [goToNextPage, goToPrevPage, numPages, pageNumber]);
+
+    useEffect(() => {
+        if (!contentRef.current) {
+            return;
+        }
+
+        contentRef.current.scrollTop = 0;
+    }, [pageNumber]);
 
     // 进度条变化
     const handleProgressChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -402,7 +423,7 @@ export function PdfReader({
             {/* PDF 内容区域 */}
             <div
                 ref={contentRef}
-                className="flex-1 relative overflow-auto flex flex-col items-center"
+                className="flex-1 relative overflow-auto overscroll-y-contain flex flex-col items-center [-webkit-overflow-scrolling:touch]"
                 onMouseUp={handleTextSelection}
                 onWheel={handleWheelNavigation}
             >

@@ -10,7 +10,8 @@ from pathlib import Path
 from string import Template
 
 import anthropic
-from .translator import OpenAITranslator
+from .translator import OpenAITranslator, OPENKOTO_LLM_TIMEOUT_SECS
+from ._trace import trace, now
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,9 @@ class OpenKotoTranslator(OpenAITranslator):
             from .translator import BaseTranslator
             BaseTranslator.__init__(self, lang_in, lang_out, model, ignore_cache)
             self.options = {"temperature": 0}
-            self.anthropic_client = anthropic.Anthropic(api_key=api_key)
+            self.anthropic_client = anthropic.Anthropic(
+                api_key=api_key, timeout=OPENKOTO_LLM_TIMEOUT_SECS
+            )
             self.prompttext = prompt
             self.add_cache_impact_parameters("temperature", self.options["temperature"])
             self.add_cache_impact_parameters("prompt", self.prompt("", self.prompttext))
@@ -149,8 +152,18 @@ class OpenKotoTranslator(OpenAITranslator):
             if system:
                 kwargs["system"] = system
 
-            response = self.anthropic_client.messages.create(**kwargs)
+            _t = now()
+            trace(f"Anthropic request -> model={self.model} ({len(text)} chars)")
+            try:
+                response = self.anthropic_client.messages.create(**kwargs)
+            except BaseException as e:
+                trace(
+                    f"Anthropic request error after {now() - _t:.2f}s: "
+                    f"{type(e).__name__}: {e}"
+                )
+                raise
             content = response.content[0].text.strip()
+            trace(f"Anthropic response in {now() - _t:.2f}s ({len(content)} chars)")
             return content
         return super().do_translate(text)
 

@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogContent, DialogFooter } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
-import { Settings, Plus, Trash2, Edit2, Check, RefreshCw, Loader2, HelpCircle } from "lucide-react";
+import { Settings, Plus, Trash2, Edit2, Check, RefreshCw, Loader2, HelpCircle, Cpu, MessageSquare, SlidersHorizontal, Palette, ScrollText, X } from "lucide-react";
+import { LogsPanel } from "./LogsPanel";
 import { useTheme } from "../theme-provider";
 import type { AppConfig, ModelConfig, PromptFeature } from "../../lib/tauri";
 import {
@@ -188,6 +189,8 @@ interface SettingsDialogProps {
   onSave?: () => void;
 }
 
+type SettingsSectionId = "models" | "features" | "general" | "appearance" | "logs";
+
 export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps) {
   const { t, i18n } = useTranslation();
   const { themeName, themeMode, setThemeName, setThemeMode } = useTheme();
@@ -203,6 +206,7 @@ export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps)
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCorrupted, setIsCorrupted] = useState(false);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("models");
 
   // Model config form state
   const [editingConfig, setEditingConfig] = useState<Partial<ModelConfig> | null>(null);
@@ -235,6 +239,26 @@ export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps)
       loadConfig();
     }
   }, [isOpen]);
+
+  // Lock background scroll and close on Escape while the full-screen panel is open
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen, onClose]);
 
   const loadConfig = async () => {
     setIsLoading(true);
@@ -732,37 +756,49 @@ export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps)
     { value: "ar", label: t("settings.languages.ar") },
   ];
 
-  if (isLoading) {
-    return (
-      <Dialog isOpen={isOpen} onClose={onClose}>
-        <DialogContent className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  const saveAndClose = async () => {
+    // Save backend config before closing
+    setIsSaving(true);
+    try {
+      await invoke("save_config_cmd", { config });
+      onSave?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSaving(false);
+    }
+    onClose();
+  };
 
-  return (
-    <Dialog isOpen={isOpen} onClose={onClose} title={t("settings.title")}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        {error && (
-          <div className="mb-4 p-3 bg-destructive/10 border border-destructive/50 rounded-lg text-destructive text-sm flex flex-col gap-2">
-            <div>{error}</div>
-            {isCorrupted && (
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={handleResetConfig}
-                className="w-fit"
-              >
-                {t("settings.resetConfig")}
-              </Button>
-            )}
-          </div>
-        )}
+  const SECTIONS: { id: SettingsSectionId; label: string; icon: typeof Cpu }[] = [
+    { id: "models", label: t("settings.sections.models", "Model Providers"), icon: Cpu },
+    { id: "features", label: t("settings.sections.features", "Chat Features"), icon: MessageSquare },
+    { id: "general", label: t("settings.sections.general", "General"), icon: SlidersHorizontal },
+    { id: "appearance", label: t("settings.sections.appearance", "Appearance"), icon: Palette },
+    { id: "logs", label: t("settings.sections.logs", "Logs"), icon: ScrollText },
+  ];
 
-        <div className="space-y-6">
+  if (!isOpen) return null;
+
+  const errorBanner = error && (
+    <div className="mb-6 p-3 bg-destructive/10 border border-destructive/50 rounded-lg text-destructive text-sm flex flex-col gap-2">
+      <div>{error}</div>
+      {isCorrupted && (
+        <Button
+          type="button"
+          variant="danger"
+          size="sm"
+          onClick={handleResetConfig}
+          className="w-fit"
+        >
+          {t("settings.resetConfig")}
+        </Button>
+      )}
+    </div>
+  );
+
+  const modelsSection = (
+    <div className="space-y-6">
           {/* Model Configurations Section */}
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -1049,8 +1085,11 @@ export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps)
               </div>
             )}
           </div>
+    </div>
+  );
 
-          <div className="border-t border-border pt-4 space-y-4">
+  const featuresSection = (
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-medium text-foreground">
                 {t("settings.promptFeatures.title", "AI Chat Features")}
@@ -1282,9 +1321,13 @@ export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps)
               </div>
             )}
           </div>
+  );
 
-          {/* Other Settings */}
-          <div className="border-t border-border pt-4 space-y-4">
+  const appearanceSection = (
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-foreground">
+              {t("settings.sections.appearance", "Appearance")}
+            </h3>
 
             {/* Theme Name */}
             <div>
@@ -1315,9 +1358,14 @@ export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps)
                 <option value="system">{t("settings.theme.system")}</option>
               </Select>
             </div>
+          </div>
+  );
 
-
-
+  const generalSection = (
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-foreground">
+              {t("settings.sections.general", "General")}
+            </h3>
 
             {/* Interface Language */}
             <div>
@@ -1383,27 +1431,88 @@ export function SettingsDialog({ isOpen, onClose, onSave }: SettingsDialogProps)
               </p>
             </div>
           </div>
-        </div>
-      </DialogContent>
+  );
 
-      <DialogFooter>
-        <Button variant="secondary" onClick={async () => {
-          // Save backend config before closing
-          setIsSaving(true);
-          try {
-            await invoke("save_config_cmd", { config });
-            onSave?.();
-          } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
-          } finally {
-            setIsSaving(false);
-          }
-          onClose();
-        }} disabled={isSaving}>
-          {isSaving ? t("settings.saving", "Saving...") : t("settings.close", "Close")}
-        </Button>
-      </DialogFooter>
-    </Dialog >
+  const sectionContent: Record<SettingsSectionId, ReactNode> = {
+    models: modelsSection,
+    features: featuresSection,
+    general: generalSection,
+    appearance: appearanceSection,
+    logs: <LogsPanel />,
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex bg-background text-foreground">
+      {/* Sidebar */}
+      <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card/50">
+        <div className="flex items-center gap-2 px-5 py-5 border-b border-border">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Settings size={18} />
+          </div>
+          <h2 className="text-lg font-semibold text-foreground">{t("settings.title")}</h2>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-3">
+          <ul className="space-y-1">
+            {SECTIONS.map(({ id, label, icon: Icon }) => (
+              <li key={id}>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection(id)}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    activeSection === id
+                      ? "bg-primary/10 text-primary"
+                      : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                  }`}
+                  aria-current={activeSection === id ? "page" : undefined}
+                >
+                  <Icon size={16} />
+                  {label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="border-t border-border p-3">
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={saveAndClose}
+            disabled={isSaving}
+          >
+            {isSaving ? t("settings.saving", "Saving...") : t("settings.close", "Close")}
+          </Button>
+        </div>
+      </aside>
+
+      {/* Content */}
+      <div className="relative flex-1 overflow-y-auto">
+        <button
+          type="button"
+          onClick={saveAndClose}
+          disabled={isSaving}
+          className="absolute right-4 top-4 z-10 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          aria-label={t("settings.close", "Close")}
+        >
+          <X size={20} />
+        </button>
+
+        <div
+          className={`mx-auto px-8 py-8 ${activeSection === "logs" ? "h-full max-w-5xl flex flex-col" : "max-w-2xl"}`}
+        >
+          {errorBanner}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+            </div>
+          ) : (
+            sectionContent[activeSection]
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

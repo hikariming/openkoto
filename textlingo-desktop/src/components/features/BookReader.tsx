@@ -24,6 +24,7 @@ import { ArticleChatAssistant } from "./ArticleChatAssistant";
 import { ArticleMindMapPanel } from "./ArticleMindMapPanel";
 import { AssistantSidebarShell, type AssistantPanelMode } from "./AssistantSidebarShell";
 import { useConfig } from "../../lib/hooks";
+import { logger } from "../../lib/logger";
 
 interface BookReaderProps {
     article: Article;
@@ -189,11 +190,20 @@ export function BookReader({ article, onBack }: BookReaderProps) {
     const handlePdfTranslate = async () => {
         if (!article.book_path || isTranslating) return;
 
+        logger.info("pdf", `[UI] translate requested for ${article.book_path}`);
+
         // 监听 Rust 转发的逐页翻译进度
+        let lastProgressAt = Date.now();
         const unlistenProgress = await listen<{ current?: number; total?: number; percent?: number }>(
             "pdf-translation-progress",
             (event) => {
-                const percent = event.payload?.percent;
+                const { current, total, percent } = event.payload ?? {};
+                const gap = Date.now() - lastProgressAt;
+                lastProgressAt = Date.now();
+                logger.info(
+                    "pdf",
+                    `[UI] progress event: ${current ?? "?"}/${total ?? "?"} (${percent ?? "?"}%), +${(gap / 1000).toFixed(1)}s since last`,
+                );
                 if (typeof percent === "number") {
                     setTranslateProgress(Math.max(0, Math.min(100, percent)));
                 }
@@ -216,6 +226,7 @@ export function BookReader({ article, onBack }: BookReaderProps) {
             const activeModel = config.model_configs?.find(m => m.id === config.active_model_id);
             if (!activeModel) {
                 console.error("[PDF Translate] No active model found. Active ID:", config.active_model_id);
+                logger.error("pdf", `[UI] no active model (active_model_id=${config.active_model_id})`);
                 throw new Error(t("pdfTranslate.noActiveModel", "请先在设置中配置并激活一个AI模型"));
             }
 
@@ -227,6 +238,11 @@ export function BookReader({ article, onBack }: BookReaderProps) {
                 model: activeModel.model,
                 targetLang,
             });
+            logger.info(
+                "pdf",
+                `[UI] invoking translate_pdf_document: provider=${activeModel.api_provider}, model=${activeModel.model}, ${sourceLang} -> ${targetLang}`,
+            );
+            const startedAt = Date.now();
 
             const result = await invoke<{
                 success: boolean;
@@ -243,6 +259,11 @@ export function BookReader({ article, onBack }: BookReaderProps) {
                 baseUrl: activeModel.base_url,
             });
 
+            logger.info(
+                "pdf",
+                `[UI] translate_pdf_document returned success=${result.success} after ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+            );
+
             if (result.success) {
                 // 更新可用版本
                 setAvailableVersions({
@@ -257,6 +278,7 @@ export function BookReader({ article, onBack }: BookReaderProps) {
             }
         } catch (error) {
             console.error("[PDF Translate] Error:", error);
+            logger.error("pdf", `[UI] translation failed: ${String(error)}`);
             alert(t("pdfTranslate.error", "翻译失败: {{error}}", { error: String(error) }));
         } finally {
             unlistenProgress();

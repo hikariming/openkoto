@@ -4,6 +4,7 @@ mod ai_service;
 pub mod commands;
 pub mod ffmpeg;
 pub mod ktv_export;
+pub mod logging;
 pub mod moonshot;
 pub mod pdf_sidecar;
 pub mod storage;
@@ -105,6 +106,11 @@ pub fn run() {
             commands::translate_pdf_document,
             commands::check_pdf_translation_files,
             commands::export_file_cmd,
+            // 全局日志
+            logging::get_logs_cmd,
+            logging::clear_logs_cmd,
+            logging::append_log_cmd,
+            logging::get_log_file_path_cmd,
             // 书签管理
             commands::add_bookmark_cmd,
             commands::list_bookmarks_cmd,
@@ -119,6 +125,9 @@ pub fn run() {
                 // Ensure app directories exist
                 let _ = commands::init_app(app_handle.clone()).await;
                 if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+                    // Start the persistent log file as early as possible so the
+                    // very first PDF translation of a session is captured.
+                    logging::LogStore::global().init_file(&app_data_dir);
                     let _ = mark_running_tasks_interrupted_in_dir(&app_data_dir);
                 }
 

@@ -2978,9 +2978,30 @@ pub async fn translate_pdf_document(
     model: String,
     base_url: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    use crate::logging::{self, LogLevel};
     use crate::pdf_sidecar;
     use std::io::{BufRead, BufReader};
     use std::process::{Command, Stdio};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Instant;
+
+    let started_at = Instant::now();
+    logging::log(LogLevel::Info, "pdf", "==================== PDF translation started ====================");
+    logging::log(
+        LogLevel::Info,
+        "pdf",
+        format!(
+            "request: lang_in={lang_in}, lang_out={lang_out}, provider={provider}, model={model}, base_url={}, api_key={}",
+            base_url.as_deref().unwrap_or("<none>"),
+            if api_key.trim().is_empty() {
+                "<empty>".to_string()
+            } else {
+                format!("<set, {} chars>", api_key.trim().len())
+            }
+        ),
+    );
+    logging::log(LogLevel::Info, "pdf", format!("source pdf: {pdf_path}"));
 
     println!(
         "[PDF Translate] Starting translation: {} -> {}",
@@ -3063,6 +3084,19 @@ pub async fn translate_pdf_document(
 
     println!("[PDF Sidecar] Executing: {} {:?}", cmd, args);
     println!("[PDF Sidecar] CWD: {:?}", plugin_dir);
+    logging::log(LogLevel::Info, "pdf", format!("spawn: {} {:?}", cmd, args));
+    logging::log(LogLevel::Info, "pdf", format!("cwd: {:?}", plugin_dir));
+    logging::log(
+        LogLevel::Info,
+        "pdf",
+        format!(
+            "offline assets: {}",
+            envs.iter()
+                .find(|(k, _)| *k == "OPENKOTO_OFFLINE_ASSETS_DIR")
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("<none — sidecar may download on first run>")
+        ),
+    );
 
     // 在插件目录下执行，以确保 Python 模块导入正确 (如果是 Dev 模式)
     // 或者对于 Prod 模式，通常也不影响
@@ -3091,11 +3125,18 @@ pub async fn translate_pdf_document(
         .take()
         .ok_or_else(|| "PDF sidecar stderr unavailable".to_string())?;
 
+    // Shared "last time the sidecar said anything" clock. A stall (the classic
+    // "stuck at 50%") shows up as a long gap with no new line; the watchdog
+    // below turns that silent gap into an explicit warning in the log.
+    let last_activity = Arc::new(Mutex::new(Instant::now()));
+
     // stdout: parse progress markers -> emit events + console log; pass the rest through.
     let app_for_stdout = app_handle.clone();
+    let activity_stdout = last_activity.clone();
     let stdout_handle = std::thread::spawn(move || {
         let reader = BufReader::new(child_stdout);
         for line in reader.lines().map_while(Result::ok) {
+            *activity_stdout.lock().unwrap() = Instant::now();
             if let Some(rest) = line.strip_prefix("OPENKOTO_PROGRESS ") {
                 match serde_json::from_str::<serde_json::Value>(rest) {
                     Ok(payload) => {
@@ -3106,26 +3147,78 @@ pub async fn translate_pdf_document(
                             "[PDF Translate] progress {}/{} ({}%)",
                             current, total, percent
                         );
+                        logging::log(
+                            LogLevel::Info,
+                            "pdf",
+                            format!("progress: page {current}/{total} ({percent}%)"),
+                        );
                         let _ = app_for_stdout.emit("pdf-translation-progress", payload);
                     }
-                    Err(_) => println!("[PDF Sidecar] {}", line),
+                    Err(_) => {
+                        println!("[PDF Sidecar] {}", line);
+                        logging::log(LogLevel::Info, "python", format!("[stdout] {line}"));
+                    }
                 }
             } else {
                 println!("[PDF Sidecar] {}", line);
+                logging::log(LogLevel::Info, "python", format!("[stdout] {line}"));
             }
         }
     });
 
     // stderr: log live and accumulate so a failure still surfaces a useful message.
+    // The Python side writes its detailed per-page / per-paragraph trace here.
+    let activity_stderr = last_activity.clone();
     let stderr_handle = std::thread::spawn(move || {
         let reader = BufReader::new(child_stderr);
         let mut collected = String::new();
         for line in reader.lines().map_while(Result::ok) {
+            *activity_stderr.lock().unwrap() = Instant::now();
             eprintln!("[PDF Sidecar:err] {}", line);
+            let lower = line.to_ascii_lowercase();
+            let level = if lower.contains("traceback")
+                || lower.contains("error")
+                || lower.contains("exception")
+                || lower.contains("failed")
+            {
+                LogLevel::Error
+            } else if lower.contains("retry") || lower.contains("warn") {
+                LogLevel::Warn
+            } else {
+                LogLevel::Info
+            };
+            logging::log(level, "python", line.clone());
             collected.push_str(&line);
             collected.push('\n');
         }
         collected
+    });
+
+    // Watchdog: if the sidecar goes quiet for too long, say so explicitly so a
+    // hang is visible in the log instead of just a frozen progress bar.
+    let watchdog_done = Arc::new(AtomicBool::new(false));
+    let watchdog_flag = watchdog_done.clone();
+    let activity_watchdog = last_activity.clone();
+    let watchdog_handle = std::thread::spawn(move || {
+        const STALL_WARN_SECS: u64 = 20;
+        let mut warned_at = 0u64;
+        while !watchdog_flag.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_secs(5));
+            if watchdog_flag.load(Ordering::Relaxed) {
+                break;
+            }
+            let idle = activity_watchdog.lock().unwrap().elapsed().as_secs();
+            if idle >= STALL_WARN_SECS && idle != warned_at {
+                warned_at = idle;
+                logging::log(
+                    LogLevel::Warn,
+                    "pdf",
+                    format!(
+                        "no sidecar output for {idle}s — translation may be stalled (hung API call or retry loop?)"
+                    ),
+                );
+            }
+        }
     });
 
     let status = child
@@ -3133,6 +3226,20 @@ pub async fn translate_pdf_document(
         .map_err(|e| format!("Failed to wait for PDF sidecar: {}", e))?;
     let _ = stdout_handle.join();
     let stderr_output = stderr_handle.join().unwrap_or_default();
+    watchdog_done.store(true, Ordering::Relaxed);
+    let _ = watchdog_handle.join();
+
+    let elapsed_secs = started_at.elapsed().as_secs_f64();
+    logging::log(
+        LogLevel::Info,
+        "pdf",
+        format!(
+            "sidecar exited: success={}, code={:?}, elapsed={:.1}s",
+            status.success(),
+            status.code(),
+            elapsed_secs
+        ),
+    );
 
     if status.success() {
         // Settle the UI at 100% once the files are written.
@@ -3144,6 +3251,12 @@ pub async fn translate_pdf_document(
         let mono_path = format!("{}/{}-mono.pdf", output_dir, filename_stem);
         let dual_path = format!("{}/{}-dual.pdf", output_dir, filename_stem);
 
+        logging::log(
+            LogLevel::Info,
+            "pdf",
+            format!("translation OK in {elapsed_secs:.1}s -> {mono_path} / {dual_path}"),
+        );
+
         Ok(serde_json::json!({
             "success": true,
             "mono_pdf": mono_path,
@@ -3151,6 +3264,23 @@ pub async fn translate_pdf_document(
             "original_pdf": pdf_path,
         }))
     } else {
+        logging::log(
+            LogLevel::Error,
+            "pdf",
+            format!(
+                "translation FAILED (code={:?}). Tail of sidecar stderr:\n{}",
+                status.code(),
+                stderr_output
+                    .lines()
+                    .rev()
+                    .take(20)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            ),
+        );
         Err(format!("PDF translation failed: {}", stderr_output))
     }
 }

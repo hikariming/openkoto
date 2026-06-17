@@ -52,6 +52,8 @@ describe("SettingsDialog", () => {
 
     render(<SettingsDialog isOpen onClose={vi.fn()} onSave={vi.fn()} />);
 
+    await userEvent.click(await screen.findByRole("button", { name: "Chat Features" }));
+
     expect(await screen.findByText("AI Chat Features")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Add feature" }));
@@ -94,6 +96,8 @@ describe("SettingsDialog", () => {
     });
 
     render(<SettingsDialog isOpen onClose={vi.fn()} onSave={vi.fn()} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Chat Features" }));
 
     expect(await screen.findByText("AI Chat Features")).toBeInTheDocument();
 
@@ -152,6 +156,8 @@ describe("SettingsDialog", () => {
     });
 
     render(<SettingsDialog isOpen onClose={vi.fn()} onSave={vi.fn()} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "General" }));
 
     const concurrencyInput = await screen.findByLabelText("Batch explanation concurrency");
     fireEvent.change(concurrencyInput, { target: { value: "6" } });

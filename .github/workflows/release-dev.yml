@@ -232,3 +232,29 @@ jobs:
             echo "::error::disable-library-validation entitlement missing on PDF sidecar — PDF translation will fail at runtime"
             exit 1
           fi
+
+      - name: assert notarization staple (macos only)
+        if: startsWith(matrix.platform, 'macos-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find textlingo-desktop/src-tauri/target -type d -name "*.app" -path "*/release/bundle/macos/*" | head -1)
+          if [ -z "$APP" ]; then echo "::error::No .app bundle found"; exit 1; fi
+          echo "Validating staple on app: $APP"
+          if xcrun stapler validate "$APP"; then
+            echo "OK: .app carries a stapled notarization ticket"
+          else
+            echo "::error::.app is NOT stapled — quarantined users will see 'is damaged and can't be opened'"
+            exit 1
+          fi
+          DMG=$(find textlingo-desktop/src-tauri/target -name "*.dmg" -path "*/release/bundle/dmg/*" | head -1)
+          if [ -n "$DMG" ]; then
+            echo "Validating staple on dmg: $DMG"
+            if xcrun stapler validate "$DMG"; then
+              echo "OK: .dmg carries a stapled notarization ticket"
+            else
+              echo "::warning::.dmg is not stapled; the .app inside is, which is normally sufficient"
+            fi
+          else
+            echo "::warning::No .dmg found to validate staple"
+          fi

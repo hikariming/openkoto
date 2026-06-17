@@ -200,6 +200,28 @@
   },
   "settings": {
     "title": "Settings",
+    "sections": {
+      "models": "Model Providers",
+      "features": "Chat Features",
+      "general": "General",
+      "appearance": "Appearance",
+      "logs": "Logs"
+    },
+    "logs": {
+      "title": "Logs",
+      "description": "Detailed logs from the app, the PDF sidecar (Python), and the UI. Use this to diagnose stuck translations.",
+      "allSources": "All sources",
+      "allLevels": "All levels",
+      "searchPlaceholder": "Filter text...",
+      "autoRefresh": "Auto-refresh",
+      "refresh": "Refresh",
+      "copy": "Copy",
+      "export": "Export",
+      "clear": "Clear",
+      "count": "{{count}} entries",
+      "lastAt": "last",
+      "empty": "No logs yet. Run a PDF translation to capture detailed logs here."
+    },
     "apiProvider": "API Provider",
     "apiKey": "API Key",
     "apiKeyPlaceholder": "Enter your API key...",

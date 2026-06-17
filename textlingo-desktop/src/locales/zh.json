@@ -200,6 +200,28 @@
   },
   "settings": {
     "title": "设置",
+    "sections": {
+      "models": "模型与服务商",
+      "features": "对话功能",
+      "general": "通用",
+      "appearance": "外观",
+      "logs": "日志"
+    },
+    "logs": {
+      "title": "全局日志",
+      "description": "来自应用、PDF 翻译子进程（Python）和界面的详细日志，用于排查卡住的翻译任务。",
+      "allSources": "全部来源",
+      "allLevels": "全部级别",
+      "searchPlaceholder": "筛选文本…",
+      "autoRefresh": "自动刷新",
+      "refresh": "刷新",
+      "copy": "复制",
+      "export": "导出",
+      "clear": "清空",
+      "count": "{{count}} 条",
+      "lastAt": "最近",
+      "empty": "暂无日志。运行一次 PDF 翻译即可在此查看详细日志。"
+    },
     "apiProvider": "API 提供商",
     "apiKey": "API 密钥",
     "apiKeyPlaceholder": "输入您的 API 密钥...",
