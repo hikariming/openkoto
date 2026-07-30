@@ -10,3 +10,9 @@
 # not committed (~95 MB). Keep the folder + README, ignore the binaries.
 /resources/pdf-assets/models/
 /resources/pdf-assets/fonts/
+
+# Agent worker artifacts and runtimes are staged during CI/release builds.
+/resources/agent-worker/*
+!/resources/agent-worker/.gitkeep
+/binaries/openkoto-agent-node-*
+/binaries/opencode-*
