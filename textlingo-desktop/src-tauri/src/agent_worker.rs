@@ -230,6 +230,7 @@ pub enum RuntimeProviderConfig {
 
 const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+const META_BASE_URL: &str = "https://api.meta.ai/v1";
 const OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 const LMSTUDIO_BASE_URL: &str = "http://127.0.0.1:1234/v1";
 
@@ -553,6 +554,7 @@ pub fn default_base_url(provider: &str) -> Option<&'static str> {
         "deepseek" => Some("https://api.deepseek.com/v1"),
         "siliconflow" => Some("https://api.siliconflow.cn/v1"),
         "302ai" => Some("https://api.302.ai/v1"),
+        "meta" => Some(META_BASE_URL),
         "ollama" => Some(OLLAMA_BASE_URL),
         "lmstudio" => Some(LMSTUDIO_BASE_URL),
         _ if moonshot_base_url(provider).is_some() => moonshot_base_url(provider),
@@ -595,6 +597,7 @@ pub fn resolve_runtime_provider_config(config: &ModelConfig) -> RuntimeProviderC
         "302ai",
         "ollama",
         "lmstudio",
+        "meta",
     ]
     .contains(&provider.as_str())
         || moonshot_base_url(&provider).is_some()

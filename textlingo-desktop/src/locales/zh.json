@@ -325,6 +325,7 @@
       "moonshot": "月之暗面 (Kimi)",
       "moonshot-cn": "月之暗面 (Kimi 中国版)",
       "moonshot-global": "Moonshot AI (Kimi 国际版)",
+      "meta": "Meta AI",
       "anthropic": "Anthropic (Claude)"
     },
     "baseUrl": "服务地址",
@@ -385,6 +386,12 @@
         "moonshot-v1-128k": "Moonshot v1 128k",
         "moonshot-v1-32k": "Moonshot v1 32k",
         "moonshot-v1-8k": "Moonshot v1 8k"
+      },
+      "meta": {
+        "rl-muse-spark-1-2-playground": "Muse Spark 1.2 Playground",
+        "muse-spark-1.2": "Muse Spark 1.2",
+        "muse-spark-1.1": "Muse Spark 1.1",
+        "muse-spark-1.2-contributor": "Muse Spark 1.2 Contributor"
       },
       "anthropic": {
         "claude-sonnet-4-6": "Claude Sonnet 4.6",
