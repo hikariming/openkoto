@@ -36,6 +36,7 @@ zip = "2"
 scraper = "0.20"
 readability = "0.3"
 html-escape = "0.2"
+quick-xml = "0.38"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

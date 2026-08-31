@@ -2867,6 +2867,7 @@ dependencies = [
  "futures-util",
  "html-escape",
  "keyring",
+ "quick-xml",
  "readability",
  "regex",
  "reqwest 0.12.28",

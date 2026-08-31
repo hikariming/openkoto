@@ -1,6 +1,7 @@
 // Modules
 pub mod agent_worker;
 mod ai_service;
+mod book_content;
 pub mod commands;
 pub mod ffmpeg;
 pub mod fsrs;

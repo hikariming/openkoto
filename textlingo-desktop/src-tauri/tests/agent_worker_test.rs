@@ -1,12 +1,12 @@
-use std::{fs, path::PathBuf, thread::sleep, time::Duration};
+use std::{fs, io::Write, path::PathBuf, thread::sleep, time::Duration};
 
 use openkoto_desktop_lib::{
     agent_worker::{
         apply_worker_event_in_dir, build_assistant_worker_request, build_mind_map_worker_request,
         build_status_snapshot, mark_running_tasks_interrupted_in_dir, parse_worker_event_line,
-        push_worker_log, resolve_runtime_provider_config, worker_bundle_is_fresh,
-        worker_event_log_entry, WorkerHealth, WorkerLogEntry, WorkerLogLevel,
-        WorkerRuntimeState,
+        push_worker_log, resolve_packaged_worker_launch_config, resolve_runtime_provider_config,
+        worker_bundle_is_fresh, worker_event_log_entry, WorkerHealth, WorkerLogEntry,
+        WorkerLogLevel, WorkerRuntimeState,
     },
     storage::{load_agent_task_in_dir, load_artifact_in_dir, save_agent_task_in_dir},
     types::{
@@ -34,6 +34,14 @@ fn temp_worker_project_dir(name: &str) -> PathBuf {
     fs::create_dir_all(dir.join("src")).unwrap();
     fs::create_dir_all(dir.join("dist")).unwrap();
     dir
+}
+
+fn packaged_binary_name(name: &str) -> String {
+    if cfg!(target_os = "windows") {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
 }
 
 fn save_article_fixture(data_dir: &PathBuf, article: &Article) {
@@ -115,6 +123,69 @@ fn sample_article() -> Article {
     }
 }
 
+fn create_epub_fixture(data_dir: &PathBuf) -> PathBuf {
+    let epub_path = data_dir.join("legacy-book.epub");
+    let file = fs::File::create(&epub_path).unwrap();
+    let mut archive = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default();
+
+    archive.start_file("mimetype", options).unwrap();
+    archive.write_all(b"application/epub+zip").unwrap();
+    archive
+        .start_file("META-INF/container.xml", options)
+        .unwrap();
+    archive
+        .write_all(
+            br#"<?xml version="1.0"?>
+<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+        )
+        .unwrap();
+    archive.start_file("OEBPS/content.opf", options).unwrap();
+    archive
+        .write_all(
+            br#"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <manifest>
+    <item id="chapter-2" href="Text/chapter-2.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter-1" href="Text/chapter-1.xhtml" media-type="application/xhtml+xml"/>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+  </manifest>
+  <spine>
+    <itemref idref="chapter-1"/>
+    <itemref idref="chapter-2"/>
+  </spine>
+</package>"#,
+        )
+        .unwrap();
+    archive
+        .start_file("OEBPS/Text/chapter-1.xhtml", options)
+        .unwrap();
+    archive
+        .write_all(
+            br#"<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>First Principle</h1><p>Spend less than you earn and invest the surplus.</p></body></html>"#,
+        )
+        .unwrap();
+    archive
+        .start_file("OEBPS/Text/chapter-2.xhtml", options)
+        .unwrap();
+    archive
+        .write_all(
+            br#"<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Second Principle</h1><p>Choose broad, low-cost index funds.</p></body></html>"#,
+        )
+        .unwrap();
+    archive.start_file("OEBPS/nav.xhtml", options).unwrap();
+    archive
+        .write_all(br#"<html><body>Navigation should not be included.</body></html>"#)
+        .unwrap();
+    archive.finish().unwrap();
+
+    epub_path
+}
+
 fn sample_mind_map_result() -> serde_json::Value {
     serde_json::json!({
         "status": "applicable",
@@ -183,7 +254,8 @@ fn worker_request_uses_agent_run_and_provider_config() {
         &sample_task(AgentTaskStatus::Queued),
         &sample_article(),
         &provider_config,
-    );
+    )
+    .unwrap();
 
     assert_eq!(request["type"], "request");
     assert_eq!(request["method"], "agent.run");
@@ -206,6 +278,68 @@ fn worker_request_uses_agent_run_and_provider_config() {
         request["params"]["provider_config"]["baseUrl"],
         "https://openrouter.ai/api/v1"
     );
+}
+
+#[test]
+fn worker_request_extracts_epub_spine_text_for_legacy_placeholder() {
+    let data_dir = temp_data_dir("epub-source");
+    let epub_path = create_epub_fixture(&data_dir);
+    let mut article = sample_article();
+    article.title = "Legacy EPUB".to_string();
+    article.content = "[EPUB 书籍] Legacy EPUB".to_string();
+    article.source_type = Some("book".to_string());
+    article.book_path = Some(epub_path.to_string_lossy().into_owned());
+    article.book_type = Some("epub".to_string());
+
+    let request = build_mind_map_worker_request(
+        &sample_task(AgentTaskStatus::Queued),
+        &article,
+        &resolve_runtime_provider_config(&sample_model_config(
+            "openrouter",
+            "openai/gpt-4o-mini",
+            None,
+        )),
+    )
+    .unwrap();
+    let content = request["params"]["input"]["article_snapshot"]["content"]
+        .as_str()
+        .unwrap();
+
+    assert!(content.contains("First Principle"));
+    assert!(content.contains("Spend less than you earn"));
+    assert!(content.contains("Second Principle"));
+    assert!(content.contains("low-cost index funds"));
+    assert!(!content.contains("Navigation should not be included"));
+    assert!(content.find("First Principle").unwrap() < content.find("Second Principle").unwrap());
+
+    fs::remove_dir_all(data_dir).unwrap();
+}
+
+#[test]
+fn worker_request_reports_invalid_legacy_epub_source() {
+    let data_dir = temp_data_dir("invalid-epub-source");
+    let epub_path = data_dir.join("invalid.epub");
+    fs::write(&epub_path, b"not a zip archive").unwrap();
+    let mut article = sample_article();
+    article.content = "[EPUB 书籍] Invalid EPUB".to_string();
+    article.book_path = Some(epub_path.to_string_lossy().into_owned());
+    article.book_type = Some("epub".to_string());
+
+    let error = build_mind_map_worker_request(
+        &sample_task(AgentTaskStatus::Queued),
+        &article,
+        &resolve_runtime_provider_config(&sample_model_config(
+            "openrouter",
+            "openai/gpt-4o-mini",
+            None,
+        )),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("failed to extract EPUB text"));
+    assert!(error.contains("invalid EPUB archive"));
+
+    fs::remove_dir_all(data_dir).unwrap();
 }
 
 #[test]
@@ -690,8 +824,18 @@ fn task_log_events_are_converted_into_log_entries() {
 #[test]
 fn worker_bundle_is_stale_when_required_output_is_missing() {
     let project_dir = temp_worker_project_dir("missing-output");
-    for file in ["index", "assistantTask", "mindMapTask", "protocol", "runtime"] {
-        fs::write(project_dir.join("src").join(format!("{file}.ts")), "export {};\n").unwrap();
+    for file in [
+        "index",
+        "assistantTask",
+        "mindMapTask",
+        "protocol",
+        "runtime",
+    ] {
+        fs::write(
+            project_dir.join("src").join(format!("{file}.ts")),
+            "export {};\n",
+        )
+        .unwrap();
     }
     fs::write(project_dir.join("dist").join("index.js"), "export {};\n").unwrap();
 
@@ -701,9 +845,24 @@ fn worker_bundle_is_stale_when_required_output_is_missing() {
 #[test]
 fn worker_bundle_is_stale_when_source_is_newer_than_dist() {
     let project_dir = temp_worker_project_dir("stale-output");
-    for file in ["index", "assistantTask", "mindMapTask", "protocol", "runtime"] {
-        fs::write(project_dir.join("src").join(format!("{file}.ts")), "export {};\n").unwrap();
-        fs::write(project_dir.join("dist").join(format!("{file}.js")), "export {};\n").unwrap();
+    for file in [
+        "index",
+        "assistantTask",
+        "mindMapTask",
+        "mindMapSchema",
+        "protocol",
+        "runtime",
+    ] {
+        fs::write(
+            project_dir.join("src").join(format!("{file}.ts")),
+            "export {};\n",
+        )
+        .unwrap();
+        fs::write(
+            project_dir.join("dist").join(format!("{file}.js")),
+            "export {};\n",
+        )
+        .unwrap();
     }
 
     sleep(Duration::from_millis(20));
@@ -714,4 +873,117 @@ fn worker_bundle_is_stale_when_source_is_newer_than_dist() {
     .unwrap();
 
     assert!(!worker_bundle_is_fresh(&project_dir).unwrap());
+}
+
+#[test]
+fn worker_bundle_is_stale_when_mind_map_schema_output_is_missing() {
+    let project_dir = temp_worker_project_dir("missing-mind-map-schema");
+    for file in [
+        "index",
+        "assistantTask",
+        "mindMapTask",
+        "protocol",
+        "runtime",
+    ] {
+        fs::write(
+            project_dir.join("src").join(format!("{file}.ts")),
+            "export {};\n",
+        )
+        .unwrap();
+        fs::write(
+            project_dir.join("dist").join(format!("{file}.js")),
+            "export {};\n",
+        )
+        .unwrap();
+    }
+    fs::write(
+        project_dir.join("src").join("mindMapSchema.ts"),
+        "export {};\n",
+    )
+    .unwrap();
+
+    assert!(!worker_bundle_is_fresh(&project_dir).unwrap());
+}
+
+#[test]
+fn packaged_worker_launch_uses_bundled_node_and_worker_entry() {
+    let root = temp_data_dir("packaged-worker");
+    let resource_dir = root.join("OpenKoto Desktop.app/Contents/Resources");
+    let worker_dir = resource_dir.join("resources/agent-worker");
+    let node_path = root
+        .join("OpenKoto Desktop.app/Contents/MacOS")
+        .join(packaged_binary_name("openkoto-agent-node"));
+    fs::create_dir_all(worker_dir.join("dist")).unwrap();
+    fs::create_dir_all(node_path.parent().unwrap()).unwrap();
+    fs::write(worker_dir.join("dist/index.js"), "console.log('ready');\n").unwrap();
+    fs::write(&node_path, b"node").unwrap();
+    fs::write(
+        node_path
+            .parent()
+            .unwrap()
+            .join(packaged_binary_name("opencode")),
+        b"opencode",
+    )
+    .unwrap();
+
+    let config = resolve_packaged_worker_launch_config(&resource_dir).unwrap();
+
+    assert_eq!(config.program, node_path.to_string_lossy());
+    assert_eq!(config.args, vec!["dist/index.js"]);
+    assert_eq!(config.cwd, worker_dir);
+    let runtime_dir = node_path.parent().unwrap().to_string_lossy().into_owned();
+    assert!(config
+        .envs
+        .iter()
+        .any(|(key, value)| key == "PATH" && value.starts_with(&runtime_dir)));
+}
+
+#[test]
+fn packaged_worker_launch_supports_flat_resource_layout() {
+    let resource_dir = temp_data_dir("flat-packaged-worker");
+    let worker_dir = resource_dir.join("agent-worker");
+    let node_path = resource_dir.join(packaged_binary_name("openkoto-agent-node"));
+    fs::create_dir_all(worker_dir.join("dist")).unwrap();
+    fs::write(worker_dir.join("dist/index.js"), "console.log('ready');\n").unwrap();
+    fs::write(&node_path, b"node").unwrap();
+    fs::write(
+        resource_dir.join(packaged_binary_name("opencode")),
+        b"opencode",
+    )
+    .unwrap();
+
+    let config = resolve_packaged_worker_launch_config(&resource_dir).unwrap();
+
+    assert_eq!(config.program, node_path.to_string_lossy());
+    assert_eq!(config.cwd, worker_dir);
+}
+
+#[test]
+fn packaged_worker_launch_reports_missing_release_resources() {
+    let resource_dir = temp_data_dir("missing-packaged-worker");
+
+    let error = resolve_packaged_worker_launch_config(&resource_dir).unwrap_err();
+
+    assert!(error.contains("Packaged agent worker"));
+    assert!(error.contains("reinstall"));
+    assert!(!error.contains("npm"));
+}
+
+#[test]
+fn packaged_worker_launch_reports_missing_opencode_runtime() {
+    let root = temp_data_dir("missing-opencode-runtime");
+    let resource_dir = root.join("OpenKoto Desktop.app/Contents/Resources");
+    let worker_dir = resource_dir.join("resources/agent-worker/dist");
+    let node_path = root
+        .join("OpenKoto Desktop.app/Contents/MacOS")
+        .join(packaged_binary_name("openkoto-agent-node"));
+    fs::create_dir_all(&worker_dir).unwrap();
+    fs::create_dir_all(node_path.parent().unwrap()).unwrap();
+    fs::write(worker_dir.join("index.js"), "console.log('ready');\n").unwrap();
+    fs::write(&node_path, b"node").unwrap();
+
+    let error = resolve_packaged_worker_launch_config(&resource_dir).unwrap_err();
+
+    assert!(error.contains("OpenCode runtime"));
+    assert!(error.contains("reinstall"));
 }

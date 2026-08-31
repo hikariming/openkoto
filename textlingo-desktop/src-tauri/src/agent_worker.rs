@@ -1,5 +1,6 @@
-use crate::moonshot::moonshot_base_url;
+use crate::book_content::resolve_mind_map_content;
 use crate::commands::save_mind_map_artifact_in_dir;
+use crate::moonshot::moonshot_base_url;
 use crate::storage::{
     list_agent_tasks_in_dir, load_agent_task_in_dir, save_agent_task_in_dir,
     update_article_active_mind_map_artifact_in_dir,
@@ -370,7 +371,7 @@ impl AgentWorkerManager {
             &persisted_task,
         )?;
 
-        let request = build_mind_map_worker_request(&persisted_task, article, provider_config);
+        let request = build_mind_map_worker_request(&persisted_task, article, provider_config)?;
         self.record_log(
             WorkerLogLevel::Info,
             "task",
@@ -626,8 +627,10 @@ pub fn build_mind_map_worker_request(
     task: &AgentTask,
     article: &Article,
     provider_config: &RuntimeProviderConfig,
-) -> serde_json::Value {
-    serde_json::json!({
+) -> Result<serde_json::Value, String> {
+    let content = resolve_mind_map_content(article)?;
+
+    Ok(serde_json::json!({
         "id": task.id,
         "type": "request",
         "method": "agent.run",
@@ -642,12 +645,12 @@ pub fn build_mind_map_worker_request(
                 "mode": "balanced",
                 "article_snapshot": {
                     "title": article.title,
-                    "content": article.content,
+                    "content": content,
                     "source_type": article.source_type,
                 },
             }
         }
-    })
+    }))
 }
 
 pub fn build_assistant_worker_request(
@@ -877,13 +880,120 @@ pub fn resolve_worker_launch_config(app_handle: &AppHandle) -> Result<WorkerLaun
         });
     }
 
-    let cwd = worker_project_dir();
-    ensure_worker_bundle(&cwd)?;
+    #[cfg(debug_assertions)]
+    let config = {
+        let cwd = worker_project_dir();
+        ensure_worker_bundle(&cwd)?;
+        WorkerLaunchConfig {
+            program: "node".to_string(),
+            args: vec!["dist/index.js".to_string()],
+            cwd,
+            envs: Vec::new(),
+        }
+    };
+
+    #[cfg(not(debug_assertions))]
+    let config = resolve_packaged_worker_launch_config(
+        &app_handle
+            .path()
+            .resource_dir()
+            .map_err(|e| format!("Failed to get app resource dir: {}", e))?,
+    )?;
+
+    let envs = config
+        .envs
+        .into_iter()
+        .chain(default_worker_envs(app_handle)?)
+        .collect();
+    Ok(WorkerLaunchConfig { envs, ..config })
+}
+
+fn find_packaged_worker_entry(resource_dir: &Path) -> Result<PathBuf, String> {
+    [
+        resource_dir.join("resources/agent-worker/dist/index.js"),
+        resource_dir.join("agent-worker/dist/index.js"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .ok_or_else(|| {
+        format!(
+            "Packaged agent worker is missing from '{}'; reinstall OpenKoto Desktop",
+            resource_dir.display()
+        )
+    })
+}
+
+fn find_packaged_node_program(resource_dir: &Path) -> Result<PathBuf, String> {
+    let executable_name = if cfg!(target_os = "windows") {
+        "openkoto-agent-node.exe"
+    } else {
+        "openkoto-agent-node"
+    };
+    [
+        resource_dir.join("binaries").join(executable_name),
+        resource_dir.join(executable_name),
+        resource_dir
+            .parent()
+            .unwrap_or(resource_dir)
+            .join(executable_name),
+        resource_dir
+            .parent()
+            .unwrap_or(resource_dir)
+            .join("MacOS")
+            .join(executable_name),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .ok_or_else(|| {
+        format!(
+            "Packaged agent worker runtime is missing from '{}'; reinstall OpenKoto Desktop",
+            resource_dir.display()
+        )
+    })
+}
+
+fn ensure_packaged_opencode_runtime(node_program: &Path) -> Result<(), String> {
+    let executable_name = if cfg!(target_os = "windows") {
+        "opencode.exe"
+    } else {
+        "opencode"
+    };
+    let runtime_dir = node_program.parent().unwrap_or_else(|| Path::new("."));
+    if runtime_dir.join(executable_name).is_file() {
+        return Ok(());
+    }
+    Err(format!(
+        "Packaged OpenCode runtime is missing from '{}'; reinstall OpenKoto Desktop",
+        runtime_dir.display()
+    ))
+}
+
+fn packaged_worker_path_env(node_program: &Path) -> Result<String, String> {
+    let inherited = std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let runtime_dir = node_program.parent().unwrap_or_else(|| Path::new("."));
+    std::env::join_paths(std::iter::once(runtime_dir.to_path_buf()).chain(inherited))
+        .map_err(|e| format!("Failed to configure packaged worker PATH: {}", e))
+        .map(|value| value.to_string_lossy().into_owned())
+}
+
+pub fn resolve_packaged_worker_launch_config(
+    resource_dir: &Path,
+) -> Result<WorkerLaunchConfig, String> {
+    let worker_entry = find_packaged_worker_entry(resource_dir)?;
+    let node_program = find_packaged_node_program(resource_dir)?;
+    ensure_packaged_opencode_runtime(&node_program)?;
+    let cwd = worker_entry
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| resource_dir.to_path_buf());
     Ok(WorkerLaunchConfig {
-        program: "node".to_string(),
+        program: node_program.to_string_lossy().into_owned(),
         args: vec!["dist/index.js".to_string()],
+        envs: vec![("PATH".to_string(), packaged_worker_path_env(&node_program)?)],
         cwd,
-        envs: default_worker_envs(app_handle)?,
     })
 }
 
@@ -926,6 +1036,7 @@ pub fn worker_bundle_is_fresh(cwd: &Path) -> Result<bool, String> {
         dist_dir.join("index.js"),
         dist_dir.join("assistantTask.js"),
         dist_dir.join("mindMapTask.js"),
+        dist_dir.join("mindMapSchema.js"),
         dist_dir.join("protocol.js"),
         dist_dir.join("runtime.js"),
     ];
@@ -955,6 +1066,7 @@ pub fn worker_bundle_is_fresh(cwd: &Path) -> Result<bool, String> {
     }
 }
 
+#[cfg(debug_assertions)]
 fn ensure_worker_bundle(cwd: &Path) -> Result<(), String> {
     if worker_bundle_is_fresh(cwd)? {
         return Ok(());

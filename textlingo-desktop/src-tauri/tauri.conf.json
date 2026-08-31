@@ -49,10 +49,13 @@
     "externalBin": [
       "binaries/yt-dlp",
       "binaries/ffmpeg",
-      "binaries/openkoto-pdf-translator"
+      "binaries/openkoto-pdf-translator",
+      "binaries/openkoto-agent-node",
+      "binaries/opencode"
     ],
     "resources": [
-      "resources/pdf-assets"
+      "resources/pdf-assets",
+      "resources/agent-worker"
     ],
     "macOS": {
       "entitlements": "entitlements.plist"

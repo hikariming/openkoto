@@ -32,7 +32,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: textlingo-desktop/package-lock.json
+          cache-dependency-path: |
+            textlingo-desktop/package-lock.json
+            textlingo-desktop/agent-worker/package-lock.json
 
       - name: setup python
         uses: actions/setup-python@v6
@@ -45,6 +47,18 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
         working-directory: ./textlingo-desktop
+
+      - name: Install agent worker dependencies
+        run: npm ci
+        working-directory: ./textlingo-desktop/agent-worker
+
+      - name: Test agent worker
+        run: npm test
+        working-directory: ./textlingo-desktop/agent-worker
+
+      - name: Stage bundled agent worker
+        run: npm run stage
+        working-directory: ./textlingo-desktop/agent-worker
 
       - name: Typecheck
         run: npm run typecheck
@@ -152,6 +166,14 @@ jobs:
         run: npm install
         working-directory: ./textlingo-desktop
 
+      - name: install agent worker dependencies
+        run: npm ci
+        working-directory: ./textlingo-desktop/agent-worker
+
+      - name: stage bundled agent worker
+        run: npm run stage
+        working-directory: ./textlingo-desktop/agent-worker
+
       - name: download sidecar binaries
         run: |
           chmod +x script/download_binaries.sh
@@ -207,14 +229,32 @@ jobs:
           projectPath: "./textlingo-desktop"
           args: ${{ matrix.args }}
 
-      - name: assert PDF sidecar entitlements (macos only)
+      - name: assert packaged runtimes and PDF entitlements (macos only)
         if: startsWith(matrix.platform, 'macos-')
         shell: bash
         run: |
           set -euo pipefail
           APP=$(find textlingo-desktop/src-tauri/target -type d -name "*.app" -path "*/release/bundle/macos/*" | head -1)
           if [ -z "$APP" ]; then echo "::error::No .app bundle found"; exit 1; fi
+          APP=$(cd "$APP" && pwd)
           echo "App bundle: $APP"
+          AGENT_NODE="$APP/Contents/MacOS/openkoto-agent-node"
+          AGENT_WORKER="$APP/Contents/Resources/resources/agent-worker/dist/index.js"
+          OPENCODE="$APP/Contents/MacOS/opencode"
+          for REQUIRED in "$AGENT_NODE" "$AGENT_WORKER" "$OPENCODE"; do
+            if [ ! -f "$REQUIRED" ]; then
+              echo "::error::Agent worker runtime not found at $REQUIRED"
+              find "$APP/Contents" -maxdepth 5 -type f | sort
+              exit 1
+            fi
+          done
+          "$AGENT_NODE" --version
+          WORKER_SMOKE=$(cd "$(dirname "$AGENT_WORKER")/.." && "$AGENT_NODE" dist/index.js </dev/null)
+          echo "$WORKER_SMOKE"
+          if ! grep -q '"event":"worker.ready"' <<<"$WORKER_SMOKE"; then
+            echo "::error::Packaged agent worker did not emit worker.ready"
+            exit 1
+          fi
           SIDECAR="$APP/Contents/MacOS/openkoto-pdf-translator"
           if [ ! -f "$SIDECAR" ]; then
             echo "::error::PDF sidecar not found at $SIDECAR"
