@@ -1,11 +1,9 @@
 {
   "identifier" : "4F1C2B8E",
-  "nonRenewingSubscriptions" : [
-
-  ],
+  "nonRenewingSubscriptions" : [],
   "products" : [
     {
-      "displayPrice" : "4.99",
+      "displayPrice" : "30",
       "familyShareable" : false,
       "internalID" : "6740000005",
       "localizations" : [
@@ -15,7 +13,7 @@
           "locale" : "en_US"
         },
         {
-          "description" : "3000 点 OpenKoto 托管 AI 积分",
+          "description" : "用于翻译、精讲与整本书翻译，12 个月内有效",
           "displayName" : "3000 AI 积分",
           "locale" : "zh_Hans"
         },
@@ -35,11 +33,9 @@
     "_developerTeamID" : "",
     "_failTransactionsEnabled" : false,
     "_lastSynchronizedDate" : 0,
-    "_locale" : "en_US",
-    "_storefront" : "USA",
-    "_storeKitErrors" : [
-
-    ]
+    "_locale" : "zh_Hans",
+    "_storefront" : "CHN",
+    "_storeKitErrors" : []
   },
   "subscriptionGroups" : [
     {
@@ -54,13 +50,9 @@
       "name" : "OpenKoto Membership",
       "subscriptions" : [
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "4.99",
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "8",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "6740000001",
@@ -72,8 +64,8 @@
               "locale" : "en_US"
             },
             {
-              "description" : "生词、书籍、歌词与文章不限量",
-              "displayName" : "Plus（月付）",
+              "description" : "多端同步、网页版、命令行与 MCP，按月计费",
+              "displayName" : "OpenKoto Plus 月付",
               "locale" : "zh_Hans"
             },
             {
@@ -89,13 +81,9 @@
           "type" : "RecurringSubscription"
         },
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "39.99",
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "68",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "6740000002",
@@ -107,8 +95,8 @@
               "locale" : "en_US"
             },
             {
-              "description" : "生词、书籍、歌词与文章不限量",
-              "displayName" : "Plus（年付）",
+              "description" : "多端同步、网页版、命令行与 MCP，按年计费",
+              "displayName" : "OpenKoto Plus 年付",
               "locale" : "zh_Hans"
             },
             {
@@ -124,13 +112,9 @@
           "type" : "RecurringSubscription"
         },
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "9.99",
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "28",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "6740000003",
@@ -142,8 +126,8 @@
               "locale" : "en_US"
             },
             {
-              "description" : "Plus 全部权益，另含托管 AI",
-              "displayName" : "Pro（月付）",
+              "description" : "全部 Plus 功能，每月 1500 AI 积分与整本书翻译",
+              "displayName" : "OpenKoto Pro 月付",
               "locale" : "zh_Hans"
             },
             {
@@ -159,13 +143,9 @@
           "type" : "RecurringSubscription"
         },
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "79.99",
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "258",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "6740000004",
@@ -177,8 +157,8 @@
               "locale" : "en_US"
             },
             {
-              "description" : "Plus 全部权益，另含托管 AI",
-              "displayName" : "Pro（年付）",
+              "description" : "全部 Plus 功能，每年 18000 AI 积分与整本书翻译",
+              "displayName" : "OpenKoto Pro 年付",
               "locale" : "zh_Hans"
             },
             {

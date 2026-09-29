@@ -34,9 +34,13 @@ struct PaywallView: View {
                     }
                 }
 
-                productSection(L("paywall.plus"), [.plusMonthly, .plusYearly])
-                productSection(L("paywall.pro"), [.proMonthly, .proYearly])
-                productSection(L("paywall.credits"), [.credits3000])
+                if Self.screenshotSamples && commerce.products.isEmpty {
+                    sampleSections
+                } else {
+                    productSection(L("paywall.plus"), [.plusMonthly, .plusYearly])
+                    productSection(L("paywall.pro"), [.proMonthly, .proYearly])
+                    productSection(L("paywall.credits"), [.credits3000])
+                }
 
                 Section {
                     statusRow
@@ -69,27 +73,63 @@ struct PaywallView: View {
     }
 
     private func productRow(_ product: Product) -> some View {
+        row(name: product.displayName, detail: product.description,
+            price: priceText(product), purchasing: commerce.state == .purchasing(product.id)) {
+            Task { await commerce.purchase(product) }
+        }
+    }
+
+    private func row(name: String, detail: String, price: String, purchasing: Bool,
+                     action: @escaping () -> Void) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(product.displayName)
-                if !product.description.isEmpty {
-                    Text(product.description)
+                Text(verbatim: name)
+                if !detail.isEmpty {
+                    Text(verbatim: detail)
                         .font(.caption)
                         .foregroundStyle(theme.mutedForeground)
                 }
             }
             Spacer()
-            Button {
-                Task { await commerce.purchase(product) }
-            } label: {
-                if commerce.state == .purchasing(product.id) {
+            Button(action: action) {
+                if purchasing {
                     ProgressView().controlSize(.small)
                 } else {
-                    Text(verbatim: priceText(product))
+                    Text(verbatim: price)
                 }
             }
             .buttonStyle(.borderedProminent)
             .disabled(isBusy)
+        }
+    }
+
+    /// App Store 内购审核截屏用（Debug 构建 + `-paywallSamples`）：StoreKit 拿不到商品时
+    /// （模拟器没挂 StoreKit 配置），按 App Store Connect 里的名称与价格画同一套行。
+    private static var screenshotSamples: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-paywallSamples")
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private var sampleSections: some View {
+        Section(L("paywall.plus")) {
+            row(name: "OpenKoto Plus 月付", detail: "多端同步、网页版、命令行与 MCP，按月计费",
+                price: "¥8" + L("paywall.perMonth"), purchasing: false) {}
+            row(name: "OpenKoto Plus 年付", detail: "多端同步、网页版、命令行与 MCP，按年计费",
+                price: "¥68" + L("paywall.perYear"), purchasing: false) {}
+        }
+        Section(L("paywall.pro")) {
+            row(name: "OpenKoto Pro 月付", detail: "全部 Plus 功能，每月 1500 AI 积分与整本书翻译",
+                price: "¥28" + L("paywall.perMonth"), purchasing: false) {}
+            row(name: "OpenKoto Pro 年付", detail: "全部 Plus 功能，每年 18000 AI 积分与整本书翻译",
+                price: "¥258" + L("paywall.perYear"), purchasing: false) {}
+        }
+        Section(L("paywall.credits")) {
+            row(name: "3000 AI 积分", detail: "用于翻译、精讲与整本书翻译，12 个月内有效",
+                price: "¥30", purchasing: false) {}
         }
     }
 

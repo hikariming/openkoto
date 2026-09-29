@@ -37,6 +37,9 @@ public struct RootTabView: View {
 
     // 截图/UI 测试用（-startTab*）：启动直接落在指定页；默认书库。
     // 配合 -app.onboarding.completed YES（NSArgumentDomain）可跳过首启引导。
+    /// 截图用（-showPaywall）：启动后直接弹出付费墙，供 App Store 内购审核截屏。
+    @State private var showPaywallPreview = false
+
     @State private var selection: AppSection = {
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-startTabSettings") { return .settings }
@@ -117,6 +120,11 @@ public struct RootTabView: View {
             if !onboardingCompleted { onboarding.reset() }
         }
         .environment(\.locale, activeLocale)
+        .sheet(isPresented: $showPaywallPreview) {
+            if let commerce = store.commerce {
+                PaywallView(commerce: commerce, account: account)
+            }
+        }
         .environment(store)
         .environment(appConfig)
         .environment(themeManager)
@@ -140,6 +148,7 @@ public struct RootTabView: View {
             let commerce = StoreManager(session: account)
             commerce.startObservingTransactions()
             store.commerce = commerce
+            if ProcessInfo.processInfo.arguments.contains("-showPaywall") { showPaywallPreview = true }
             account.onSignedIn = { [store] in await store.accountDidSignIn() }
             account.onSignedOut = { [store] in await store.accountDidSignOut() }
             await store.load()
