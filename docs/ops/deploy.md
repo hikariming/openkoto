@@ -52,7 +52,7 @@ JWT_PRIVATE_KEY="<node scripts/gen-jwt-key.mjs 的输出>"
      ```
    - 正式模式（2026-09-29 已建）：Plus (Yearly) `prod_6Ymabyy9r3KEDzfWQCRYcB` $9.49/yr、Pro (Monthly) `prod_16RrXYuvKqwEsuQsB3Na2R` $3.89/mo、Pro (Yearly) `prod_2qwYiPMKYdOJT1OoCcF1eU` $35.99/yr、AI Credits (3,000) `prod_3DPsHkwaB8S7aAwBqFkiQz` $4.19，已写入顶层 `vars.CREEM_PRODUCTS`；webhook "OpenKoto production" → `https://openkoto.com/api/webhooks/creem`。还需要 `wrangler secret put CREEM_API_KEY` / `CREEM_WEBHOOK_SECRET`（不加 `--env`，用正式模式的值）。
 5. **App Store**：
-   - App Store Connect 中创建内购：`com.openkoto.plus.month`（¥8）、`com.openkoto.plus.year`（¥68）、`com.openkoto.pro.month`（¥28）、`com.openkoto.pro.year`（¥258），放在同一个订阅群组；消耗型 `com.openkoto.credits.3000`（¥30）。
+   - App Store Connect 中创建内购：`com.openkoto.plus.month`（¥8）、`com.openkoto.plus.year`（¥68）、`com.openkoto.pro.month`（¥28）、`com.openkoto.pro.year`（¥258），放在同一个订阅群组；消耗型 `com.openkoto.credits.3000`（¥28，App Store 没有 ¥30 档位）。
    - 加入 App Store 小型企业计划（佣金 15%）。
    - 创建 In-App Purchase API 密钥，然后：
      ```bash
