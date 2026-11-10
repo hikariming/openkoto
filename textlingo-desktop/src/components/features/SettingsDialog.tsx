@@ -25,6 +25,11 @@ import {
   isMetaProvider,
   META_PROVIDER,
 } from "../../lib/metaProvider";
+import {
+  getUberllmModelsUrl,
+  isUberllmProvider,
+  UBERLLM_PROVIDER,
+} from "../../lib/uberllmProvider";
 
 interface OpenRouterModel {
   id: string;
@@ -37,7 +42,7 @@ interface OpenRouterModel {
   };
 }
 
-const SUPPORTED_PROVIDERS = ["openai", "anthropic", "openrouter", "deepseek", "siliconflow", "302ai", "google", "google-ai-studio", KIMI_CHINA_PROVIDER, KIMI_GLOBAL_PROVIDER, META_PROVIDER, "openai-compatible", "ollama", "lmstudio"] as const;
+const SUPPORTED_PROVIDERS = ["openai", "anthropic", "openrouter", "deepseek", "siliconflow", "302ai", "google", "google-ai-studio", KIMI_CHINA_PROVIDER, KIMI_GLOBAL_PROVIDER, META_PROVIDER, UBERLLM_PROVIDER, "openai-compatible", "ollama", "lmstudio"] as const;
 
 // Default base URLs for local providers
 const DEFAULT_BASE_URLS: Record<string, string> = {
@@ -45,6 +50,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   "ollama": "http://localhost:11434/v1",
   "lmstudio": "http://localhost:1234/v1",
   "meta": "https://api.meta.ai/v1",
+  "uberllm": "https://api.uberllm.dev/v1",
 };
 
 const DEFAULT_BATCH_TRANSLATION_CONCURRENCY = 3;
@@ -246,6 +252,12 @@ const DEFAULT_MODELS = {
     { value: "muse-spark-1.1", labelKey: "settings.models.meta.muse-spark-1.1" },
     { value: "muse-spark-1.2-contributor", labelKey: "settings.models.meta.muse-spark-1.2-contributor" },
   ],
+  [UBERLLM_PROVIDER]: [
+    { value: "deepseek/deepseek-v4.1-flash", labelKey: "settings.models.uberllm.deepseek_v4_1_flash" },
+    { value: "google/gemini-3.5-flash", labelKey: "settings.models.uberllm.gemini_3_5_flash" },
+    { value: "anthropic/claude-sonnet-4.6", labelKey: "settings.models.uberllm.claude_sonnet_4_6" },
+    { value: "qwen/qwen3.8-flash", labelKey: "settings.models.uberllm.qwen3_8_flash" },
+  ],
   ollama: [
     { value: "qwen2.5:7b-instruct", labelKey: "settings.models.ollama.qwen2_5_7b_instruct" },
     { value: "llama3.1:8b-instruct", labelKey: "settings.models.ollama.llama3_1_8b_instruct" },
@@ -306,6 +318,7 @@ export function SettingsDialog({ isOpen, onClose, onSave, initialSection }: Sett
     [KIMI_CHINA_PROVIDER]: DEFAULT_MODELS[KIMI_CHINA_PROVIDER].map(m => ({ value: m.value, label: t(m.labelKey) })),
     [KIMI_GLOBAL_PROVIDER]: DEFAULT_MODELS[KIMI_GLOBAL_PROVIDER].map(m => ({ value: m.value, label: t(m.labelKey) })),
     [META_PROVIDER]: DEFAULT_MODELS[META_PROVIDER].map(m => ({ value: m.value, label: t(m.labelKey) })),
+    [UBERLLM_PROVIDER]: DEFAULT_MODELS[UBERLLM_PROVIDER].map(m => ({ value: m.value, label: t(m.labelKey) })),
     ollama: DEFAULT_MODELS.ollama.map(m => ({ value: m.value, label: t(m.labelKey) })),
   });
   const [modelFilter, setModelFilter] = useState("");
@@ -688,7 +701,7 @@ export function SettingsDialog({ isOpen, onClose, onSave, initialSection }: Sett
 
     const provider = editingConfig.api_provider;
     // Ensure provider is defined and valid
-    if (!provider || !["openrouter", "openai", "openai-compatible", "deepseek", "siliconflow", "302ai", "google", "google-ai-studio", KIMI_CHINA_PROVIDER, KIMI_GLOBAL_PROVIDER, LEGACY_KIMI_PROVIDER, META_PROVIDER, "ollama"].includes(provider)) {
+    if (!provider || !["openrouter", "openai", "openai-compatible", "deepseek", "siliconflow", "302ai", "google", "google-ai-studio", KIMI_CHINA_PROVIDER, KIMI_GLOBAL_PROVIDER, LEGACY_KIMI_PROVIDER, META_PROVIDER, UBERLLM_PROVIDER, "ollama"].includes(provider)) {
       if (!isAuto) setSyncError(t("settings.syncErrors.providerNotSupported") || "Provider not supported for sync");
       return;
     }
@@ -751,6 +764,12 @@ export function SettingsDialog({ isOpen, onClose, onSave, initialSection }: Sett
         };
       } else if (isMetaProvider(provider)) {
         url = getMetaModelsUrl(provider) || "";
+        headers = {
+          "Authorization": `Bearer ${editingConfig.api_key}`,
+          "Content-Type": "application/json",
+        };
+      } else if (isUberllmProvider(provider)) {
+        url = getUberllmModelsUrl(provider) || "";
         headers = {
           "Authorization": `Bearer ${editingConfig.api_key}`,
           "Content-Type": "application/json",
@@ -839,6 +858,14 @@ export function SettingsDialog({ isOpen, onClose, onSave, initialSection }: Sett
             }));
         }
       } else if (isMetaProvider(provider)) {
+        if (data.data && Array.isArray(data.data)) {
+          syncedModels = data.data
+            .map((m: any) => ({
+              value: m.id,
+              label: m.id,
+            }));
+        }
+      } else if (isUberllmProvider(provider)) {
         if (data.data && Array.isArray(data.data)) {
           syncedModels = data.data
             .map((m: any) => ({
@@ -1227,7 +1254,7 @@ export function SettingsDialog({ isOpen, onClose, onSave, initialSection }: Sett
                     <label className="block text-sm font-medium text-foreground">
                       {t("settings.model")}
                     </label>
-                    {(["openrouter", "openai", "deepseek", "google", "google-ai-studio", "302ai", "siliconflow", "ollama"].includes(editingConfig.api_provider || "") || isKimiProvider(editingConfig.api_provider || "") || isMetaProvider(editingConfig.api_provider || "")) && (
+                    {(["openrouter", "openai", "deepseek", "google", "google-ai-studio", "302ai", "siliconflow", "ollama"].includes(editingConfig.api_provider || "") || isKimiProvider(editingConfig.api_provider || "") || isMetaProvider(editingConfig.api_provider || "") || isUberllmProvider(editingConfig.api_provider || "")) && (
                       <Button
                         type="button"
                         variant="ghost"

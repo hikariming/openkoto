@@ -327,6 +327,7 @@
       "moonshot-cn": "Moonshot AI (Kimi China)",
       "moonshot-global": "Moonshot AI (Kimi Global)",
       "meta": "Meta AI",
+      "uberllm": "UberLLM",
       "anthropic": "Anthropic (Claude)"
     },
     "baseUrl": "Base URL",
@@ -393,6 +394,12 @@
         "muse-spark-1.2": "Muse Spark 1.2",
         "muse-spark-1.1": "Muse Spark 1.1",
         "muse-spark-1.2-contributor": "Muse Spark 1.2 Contributor"
+      },
+      "uberllm": {
+        "deepseek_v4_1_flash": "DeepSeek V4.1 Flash",
+        "gemini_3_5_flash": "Gemini 3.5 Flash",
+        "claude_sonnet_4_6": "Claude Sonnet 4.6",
+        "qwen3_8_flash": "Qwen3.8 Flash"
       },
       "anthropic": {
         "claude-sonnet-4-6": "Claude Sonnet 4.6",
