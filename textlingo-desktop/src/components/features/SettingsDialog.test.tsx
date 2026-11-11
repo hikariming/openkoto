@@ -342,4 +342,49 @@ describe("SettingsDialog", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("syncs UberLLM models from its /v1/models endpoint and saves the synced model", async () => {
+    const synced = { data: [{ id: "deepseek/deepseek-v4.1-flash" }, { id: "google/gemini-3.5-flash" }] };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => synced } as any);
+    vi.stubGlobal("fetch", fetchMock);
+
+    invokeMock.mockImplementation((command: string, args?: any) => {
+      if (command === "get_config") {
+        return Promise.resolve({
+          model_configs: [
+            { id: "c1", name: "UberLLM", api_key: "k", api_provider: "uberllm", model: "qwen/qwen3.8-flash", is_default: true },
+          ],
+          target_language: "zh-CN",
+          interface_language: "en",
+          prompt_features: [],
+        });
+      }
+      if (command === "save_model_config") return Promise.resolve(args.config);
+      return Promise.resolve("ok");
+    });
+
+    render(<SettingsDialog isOpen onClose={vi.fn()} onSave={vi.fn()} />);
+
+    const editBtn = await screen.findByTitle("settings.editConfig");
+    await userEvent.click(editBtn);
+
+    const syncBtn = await screen.findByTitle("settings.syncModelsTooltip");
+    await userEvent.click(syncBtn);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.uberllm.dev/v1/models");
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer k");
+    await waitFor(() => expect((screen.getByDisplayValue("deepseek/deepseek-v4.1-flash") as HTMLSelectElement).value).toBe("deepseek/deepseek-v4.1-flash"));
+
+    await userEvent.click(screen.getByText("settings.saveConfig"));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        "save_model_config",
+        expect.objectContaining({ config: expect.objectContaining({ model: "deepseek/deepseek-v4.1-flash", api_provider: "uberllm" }) }),
+      ),
+    );
+
+    vi.unstubAllGlobals();
+  });
 });

@@ -40,12 +40,14 @@ const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
 const SILICONFLOW_BASE_URL = "https://api.siliconflow.cn/v1";
 const PROVIDER_302AI_BASE_URL = "https://api.302.ai/v1";
 const META_BASE_URL = "https://api.meta.ai/v1";
+const UBERLLM_BASE_URL = "https://api.uberllm.dev/v1";
 const OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
 const LMSTUDIO_BASE_URL = "http://127.0.0.1:1234/v1";
 const LEGACY_KIMI_PROVIDER = "moonshot";
 const KIMI_CHINA_PROVIDER = "moonshot-cn";
 const KIMI_GLOBAL_PROVIDER = "moonshot-global";
 const META_PROVIDER = "meta";
+const UBERLLM_PROVIDER = "uberllm";
 
 function isKimiProvider(provider: string) {
   return (
@@ -79,6 +81,8 @@ function resolveDefaultBaseUrl(provider: string) {
     case META_PROVIDER:
     case "meta":
       return META_BASE_URL;
+    case UBERLLM_PROVIDER:
+      return UBERLLM_BASE_URL;
     default:
       return undefined;
   }
@@ -117,6 +121,7 @@ export function resolveRuntimeProvider(config: RuntimeModelConfig): ResolvedRunt
       "ollama",
       "lmstudio",
       "meta",
+      "uberllm",
     ].includes(provider) ||
       isKimiProvider(provider)) &&
     baseUrl

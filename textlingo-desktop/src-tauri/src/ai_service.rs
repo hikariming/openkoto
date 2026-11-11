@@ -16,6 +16,7 @@ const DEEPSEEK_API_URL: &str = "https://api.deepseek.com/v1/chat/completions";
 const SILICONFLOW_API_URL: &str = "https://api.siliconflow.cn/v1/chat/completions";
 const API_302AI_URL: &str = "https://api.302.ai/v1/chat/completions";
 const META_API_URL: &str = "https://api.meta.ai/v1/chat/completions";
+const UBERLLM_API_URL: &str = "https://api.uberllm.dev/v1/chat/completions";
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 
 pub struct AIService {
@@ -118,6 +119,7 @@ impl AIService {
             "siliconflow" => SILICONFLOW_API_URL.to_string(),
             "302ai" => API_302AI_URL.to_string(),
             "meta" => META_API_URL.to_string(),
+            "uberllm" => UBERLLM_API_URL.to_string(),
             "google" | "google-ai-studio" => format!(
                 "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
                 self.model.strip_prefix("models/").unwrap_or(&self.model)
