@@ -161,6 +161,7 @@
     "notFound": "見つかりません。削除されたか、まだ同期されていない可能性があります。",
     "pickSentence": "文をタップすると、翻訳・解説の表示や単語の保存ができます。",
     "explain": "AI 解説",
+    "regenerate": "再生成",
     "saveSelection": "選択した語を保存",
     "saveSelectionHint": "本文で単語を選択してからタップしてください",
     "saveWord": "単語帳に追加",

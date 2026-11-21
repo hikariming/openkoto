@@ -161,6 +161,7 @@
     "notFound": "Not found. It may have been deleted or not synced yet.",
     "pickSentence": "Tap any sentence to see its translation, get an explanation or save words.",
     "explain": "Explain",
+    "regenerate": "Regenerate",
     "saveSelection": "Save selection",
     "saveSelectionHint": "Select a word in the text first, then tap here",
     "saveWord": "Save word",

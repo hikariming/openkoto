@@ -7,3 +7,4 @@ export * from "./segmentation";
 export * from "./llm-json";
 export * from "./prompts";
 export * from "./ai-tasks";
+export * from "./vocabulary";

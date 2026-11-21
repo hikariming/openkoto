@@ -1,30 +1,31 @@
 import { ChevronLeft, ChevronRight, Languages, Loader2, Rocket } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router";
 import { useLiveQuery } from "dexie-react-hooks";
-import { segmentText, type Article, type ArticleSegment, type Book, type BookChapter, type BookProgress } from "@openkoto/core";
+import type { Article, ArticleSegment, Book, BookChapter, BookProgress } from "@openkoto/core";
 import { AiSettings, useAiMode } from "../components/AiSettings";
 import { SegmentReader, type SegmentRow } from "../components/SegmentReader";
 import { Button } from "../components/ui/button";
 import { aiEngine } from "../lib/ai";
 import { request } from "../lib/api";
 import { useLibrary, useRecord, useRecords } from "../lib/library";
+import { dedupeSegments, ensureSegments } from "../lib/segments";
 
 function useSegments(articleId: string | undefined): SegmentRow[] | undefined {
   const { store } = useLibrary();
   return useLiveQuery(async () => {
     if (!articleId) return [];
-    return (await store.children("Segment", articleId))
-      .map((r) => ({ id: r.id, payload: r.payload as unknown as ArticleSegment }))
-      .sort((a, b) => a.payload.order - b.payload.order);
+    return dedupeSegments(
+      (await store.children("Segment", articleId)).map((r) => ({ id: r.id, payload: r.payload as unknown as ArticleSegment })),
+    );
   }, [store, articleId]);
 }
 
 export function ReaderPage() {
   const { t } = useTranslation();
   const { bookId: param = "" } = useParams();
-  const { write } = useLibrary();
+  const { store, write, sync } = useLibrary();
   const isArticle = param.startsWith("article:");
   const bookId = isArticle ? undefined : param.toLowerCase();
   const book = useRecord<Book>("Book", bookId);
@@ -46,21 +47,14 @@ export function ReaderPage() {
   const [showTranslation, setShowTranslation] = useState(true);
   const [translating, setTranslating] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const segmenting = useRef<string | null>(null);
 
   // Chapters are segmented lazily on first open (design §8.2).
   useEffect(() => {
-    if (!article || !articleId || segments === undefined || segments.length || segmenting.current === articleId) return;
-    segmenting.current = articleId;
-    void (async () => {
-      const now = new Date().toISOString();
-      for (const [order, s] of segmentText(article.payload.content).entries()) {
-        const id = crypto.randomUUID();
-        await write("Segment", id, { payload: { id, articleId, order, text: s.text, isNewParagraph: s.isNewParagraph, segmentationRevision: 0, createdAt: now } });
-      }
-      if (chapter) await write("BookChapter", chapter.id, { payload: { ...chapter.payload, isSegmented: true } as never });
-    })();
-  }, [article, articleId, segments, chapter, write]);
+    if (!article || !articleId || segments === undefined || segments.length || sync.status === "syncing") return;
+    void ensureSegments(store, write, articleId, article.payload.content).catch((err: unknown) => {
+      setMessage(err instanceof Error ? err.message : String(err));
+    });
+  }, [article, articleId, segments, store, write, sync.status]);
 
   const saveProgress = useCallback(
     async (i: number) => {

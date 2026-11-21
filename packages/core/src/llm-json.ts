@@ -3,6 +3,7 @@
 // and iOS OKAIClient.LLMJSONExtractor. Pipeline: extract → parse → repair → parse.
 
 import type { SegmentExplanation, VocabularyItem } from "./models";
+import { dedupeVocabulary } from "./vocabulary";
 
 type Bracket = "{" | "[";
 const CLOSING: Record<Bracket, string> = { "{": "}", "[": "]" };
@@ -169,9 +170,9 @@ export function parseSegmentExplanation(content: string): SegmentExplanation {
   if (translation === undefined || explanation === undefined) {
     throw new LlmJsonError("explanation response is missing translation/explanation", JSON.stringify(o));
   }
-  const vocabulary = (Array.isArray(o.vocabulary) ? o.vocabulary : [])
+  const vocabulary = dedupeVocabulary((Array.isArray(o.vocabulary) ? o.vocabulary : [])
     .map(toVocabularyItem)
-    .filter((v): v is VocabularyItem => v !== null);
+    .filter((v): v is VocabularyItem => v !== null));
   const grammarPoints = (Array.isArray(o.grammarPoints) ? o.grammarPoints : []).flatMap((g) => {
     const p = g as Record<string, unknown> | null;
     const point = str(p?.point);
