@@ -87,4 +87,27 @@ Common.",
     });
     expect(() => parseWordGloss('{"word":"x"}')).toThrow(LlmJsonError);
   });
+  it("deduplicates normalized words, keeping the first entry and filling empty fields", () => {
+    const result = parseSegmentExplanation(JSON.stringify({
+      translation: "translation", explanation: "explanation",
+      vocabulary: [
+        { word: " Ｈｅｌｌｏ ", meaning: "", reading: " ", usage: "first usage" },
+        { word: "hello", meaning: "greeting", reading: "hello", usage: "later usage", example: "Hello!" },
+        { word: "HELLO", meaning: "different" },
+        { word: "猫", meaning: "cat" },
+        { word: " 猫 ", meaning: "feline" },
+        { bad: true },
+      ],
+    }));
+    expect(result.vocabulary).toEqual([
+      { word: " Ｈｅｌｌｏ ", meaning: "greeting", reading: "hello", usage: "first usage", example: "Hello!" },
+      { word: "猫", meaning: "cat", reading: null, usage: null, example: null },
+    ]);
+  });
+  it("handles absent, empty and invalid explanation vocabulary", () => {
+    for (const vocabulary of [undefined, [], null, "bad", [{bad: true}]]) {
+      expect(parseSegmentExplanation(JSON.stringify({ translation: "", explanation: "", vocabulary })).vocabulary).toEqual([]);
+    }
+    expect(() => parseSegmentExplanation('{"vocabulary":[]}')).toThrow(LlmJsonError);
+  });
 });

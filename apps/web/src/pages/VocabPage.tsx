@@ -18,7 +18,7 @@ const BAND_COLOR: Record<string, string> = {
 
 export function VocabPage() {
   const { t } = useTranslation();
-  const { write, sync } = useLibrary();
+  const { store, write, sync } = useLibrary();
   const { account } = useSession();
   const rows = useRecords<FavoriteVocabulary>("Vocabulary");
   const packs = useRecords<WordPack>("WordPack");
@@ -45,7 +45,7 @@ export function VocabPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!draft.word.trim()) return;
-    const card = await addVocabulary(write, cards, draft);
+    const card = await addVocabulary(store, write, draft);
     if (packId !== "all" && !(card.packIds ?? []).includes(packId)) await setMembership(write, card, packId, true);
     setDraft({ word: "", meaning: "", reading: "", example: "" });
     wordInput.current?.focus();
@@ -53,10 +53,8 @@ export function VocabPage() {
 
   const importFile = async (file: File) => {
     const drafts = parseWordList(await file.text());
-    let current = cards;
     for (const d of drafts) {
-      const card = await addVocabulary(write, current, d);
-      current = [...current.filter((c) => c.id !== card.id), card];
+      await addVocabulary(store, write, d);
     }
   };
 

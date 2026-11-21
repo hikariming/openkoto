@@ -161,6 +161,7 @@
     "notFound": "找不到这项内容，可能已被删除或尚未同步。",
     "pickSentence": "点击任意句子，查看翻译、精讲或收藏生词。",
     "explain": "AI 精讲",
+    "regenerate": "重新生成",
     "saveSelection": "收藏选中词",
     "saveSelectionHint": "先在正文中选中一个词，再点这里",
     "saveWord": "加入生词本",

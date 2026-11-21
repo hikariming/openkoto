@@ -2,7 +2,7 @@ import { BookPlus, FileText, Loader2, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
-import { segmentText, type Article, type Book, type BookChapter, type BookProgress } from "@openkoto/core";
+import type { Article, Book, BookChapter, BookProgress } from "@openkoto/core";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
@@ -10,6 +10,7 @@ import { HttpError } from "../lib/api";
 import { parseEpub, parseTxt, sha256Hex } from "../lib/books";
 import { useLibrary, useRecords } from "../lib/library";
 import { useSession } from "../lib/session";
+import { ensureSegments } from "../lib/segments";
 
 async function uploadFile(bookId: string, bytes: Uint8Array, ext: string, sha: string): Promise<void> {
   const res = await fetch(`/api/v1/books/${bookId}/file?ext=${ext}&sha256=${sha}`, {
@@ -26,7 +27,7 @@ async function uploadFile(bookId: string, bytes: Uint8Array, ext: string, sha: s
 
 export function LibraryPage() {
   const { t } = useTranslation();
-  const { write } = useLibrary();
+  const { store, write } = useLibrary();
   const { account } = useSession();
   const books = useRecords<Book>("Book");
   const progress = useRecords<BookProgress>("BookProgress");
@@ -106,10 +107,7 @@ export function LibraryPage() {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     await write("Article", id, { payload: { id, title: draft.title.trim() || draft.content.trim().slice(0, 30), content: draft.content, sourceType: "article", createdAt: now } });
-    for (const [order, s] of segmentText(draft.content).entries()) {
-      const segId = crypto.randomUUID();
-      await write("Segment", segId, { payload: { id: segId, articleId: id, order, text: s.text, isNewParagraph: s.isNewParagraph, segmentationRevision: 0, createdAt: now } });
-    }
+    await ensureSegments(store, write, id, draft.content);
     setDraft({ title: "", content: "" });
     setShowArticle(false);
   };

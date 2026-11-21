@@ -1,5 +1,6 @@
 import {
   localDateString,
+  normalizeWord,
   reviewCard,
   SCHEDULER_VERSION,
   type FavoriteVocabulary,
@@ -9,13 +10,11 @@ import {
 } from "@openkoto/core";
 import type { LocalChange } from "@openkoto/client";
 import type { RecordType } from "@openkoto/core";
+import type { IndexedDbStore } from "./store";
 
 type Write = (type: RecordType, id: string, change: LocalChange) => Promise<void>;
 
-/** SRS spec §1.4 (global form, with the iOS NFKC step). */
-export function normalizeWord(word: string): string {
-  return word.normalize("NFKC").trim().toLowerCase();
-}
+export { normalizeWord } from "@openkoto/core";
 
 export interface VocabDraft {
   word: string;
@@ -60,21 +59,24 @@ export function newVocabulary(draft: VocabDraft, now = new Date()): FavoriteVoca
  * Adds a word, or fills empty fields of an existing card with the same normalized word
  * (desktop's global de-duplication rule).
  */
-export async function addVocabulary(write: Write, existing: FavoriteVocabulary[], draft: VocabDraft): Promise<FavoriteVocabulary> {
-  const key = normalizeWord(draft.word);
-  const dup = existing.find((v) => normalizeWord(v.word) === key);
-  if (dup) {
-    const merged: FavoriteVocabulary = { ...dup, updatedAt: new Date().toISOString() };
-    for (const field of ["meaning", "reading", "example", "usage", "explanation"] as const) {
-      const incoming = draft[field]?.trim();
-      if (!merged[field] && incoming) merged[field] = incoming;
+export async function addVocabulary(store: IndexedDbStore, write: Write, draft: VocabDraft): Promise<FavoriteVocabulary> {
+  return store.transaction(async () => {
+    const existing = (await store.live("Vocabulary")).map((r) => r.payload as unknown as FavoriteVocabulary);
+    const key = normalizeWord(draft.word);
+    const dup = existing.find((v) => normalizeWord(v.word) === key);
+    if (dup) {
+      const merged: FavoriteVocabulary = { ...dup, updatedAt: new Date().toISOString() };
+      for (const field of ["meaning", "reading", "example", "usage", "explanation"] as const) {
+        const incoming = draft[field]?.trim();
+        if (!merged[field] && incoming) merged[field] = incoming;
+      }
+      await write("Vocabulary", dup.id, { payload: merged as unknown as JsonObject });
+      return merged;
     }
-    await write("Vocabulary", dup.id, { payload: merged as unknown as JsonObject });
-    return merged;
-  }
-  const card = newVocabulary(draft);
-  await write("Vocabulary", card.id, { payload: card as unknown as JsonObject });
-  return card;
+    const card = newVocabulary(draft);
+    await write("Vocabulary", card.id, { payload: card as unknown as JsonObject });
+    return card;
+  });
 }
 
 export async function updateVocabulary(write: Write, card: FavoriteVocabulary, patch: Partial<VocabDraft>): Promise<void> {
