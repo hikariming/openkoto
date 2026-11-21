@@ -44,5 +44,17 @@ export function dedupeSegments<T extends { id: string; payload: ArticleSegment }
       byOrder.set(key, row);
     }
   }
+  for (const row of rows) {
+    const key = `${row.payload.articleId.toLowerCase()}:${row.payload.order}`;
+    const winner = byOrder.get(key)!;
+    const payload = { ...winner.payload };
+    for (const field of ["translation", "readingText"] as const) {
+      if (!payload[field]?.trim() && row.payload[field]?.trim()) payload[field] = row.payload[field];
+    }
+    for (const field of ["explanation", "startTime", "endTime"] as const) {
+      if (payload[field] == null && row.payload[field] != null) Object.assign(payload, { [field]: row.payload[field] });
+    }
+    byOrder.set(key, { ...winner, payload });
+  }
   return [...byOrder.values()].sort((a, b) => a.payload.order - b.payload.order);
 }
