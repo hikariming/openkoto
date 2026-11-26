@@ -343,7 +343,7 @@ describe("SettingsDialog", () => {
     vi.unstubAllGlobals();
   });
 
-  it("syncs UberLLM models from its /v1/models endpoint and saves the synced model", async () => {
+  it("syncs MartLLM models from its /v1/models endpoint and saves the synced model", async () => {
     const synced = { data: [{ id: "deepseek/deepseek-v4.1-flash" }, { id: "google/gemini-3.5-flash" }] };
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => synced } as any);
     vi.stubGlobal("fetch", fetchMock);
@@ -352,7 +352,7 @@ describe("SettingsDialog", () => {
       if (command === "get_config") {
         return Promise.resolve({
           model_configs: [
-            { id: "c1", name: "UberLLM", api_key: "k", api_provider: "uberllm", model: "qwen/qwen3.8-flash", is_default: true },
+            { id: "c1", name: "MartLLM", api_key: "k", api_provider: "martllm", model: "qwen/qwen3.8-flash", is_default: true },
           ],
           target_language: "zh-CN",
           interface_language: "en",
@@ -372,7 +372,7 @@ describe("SettingsDialog", () => {
     await userEvent.click(syncBtn);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][0]).toBe("https://api.uberllm.dev/v1/models");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.martllm.com/v1/models");
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe("Bearer k");
     await waitFor(() => expect((screen.getByDisplayValue("deepseek/deepseek-v4.1-flash") as HTMLSelectElement).value).toBe("deepseek/deepseek-v4.1-flash"));
 
@@ -381,7 +381,7 @@ describe("SettingsDialog", () => {
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith(
         "save_model_config",
-        expect.objectContaining({ config: expect.objectContaining({ model: "deepseek/deepseek-v4.1-flash", api_provider: "uberllm" }) }),
+        expect.objectContaining({ config: expect.objectContaining({ model: "deepseek/deepseek-v4.1-flash", api_provider: "martllm" }) }),
       ),
     );
 
